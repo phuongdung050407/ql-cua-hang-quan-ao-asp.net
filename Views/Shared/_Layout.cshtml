@@ -1,0 +1,61 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - Fashion Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
+</head>
+<body>
+    <aside class="sidebar">
+        <a class="brand" asp-controller="Home" asp-action="Index"><span class="brand-mark">F</span><span>Fashion<span>Hub</span></span></a>
+        <nav>
+            <p class="nav-label">QUẢN LÝ</p>
+            <a class="nav-link active" asp-controller="Home" asp-action="Index"><b>▦</b> Tổng quan</a>
+            @if (User.IsInRole("Admin"))
+            {
+                <a class="nav-link" asp-controller="Management" asp-action="Products"><b>◇</b> Sản phẩm</a>
+                <a class="nav-link" asp-controller="Management" asp-action="Categories"><b>⊞</b> Danh mục</a>
+            }
+            <a class="nav-link" asp-controller="Management" asp-action="Orders"><b>▤</b> Đơn đặt hàng <em>8</em></a>
+            <a class="nav-link" asp-controller="Management" asp-action="Inventory"><b>▱</b> Kho hàng</a>
+            @if (User.IsInRole("Admin"))
+            {
+                <a class="nav-link" asp-controller="Management" asp-action="Users"><b>♙</b> Người dùng</a>
+                <a class="nav-link" asp-controller="Management" asp-action="Employees"><b>♧</b> Nhân viên</a>
+                <p class="nav-label">MARKETING</p>
+                <a class="nav-link" asp-controller="Management" asp-action="Promotions"><b>◫</b> Khuyến mãi</a>
+                <a class="nav-link" asp-controller="Management" asp-action="Reports"><b>⌁</b> Báo cáo</a>
+            }
+            <a class="nav-link" asp-controller="Management" asp-action="Reviews"><b>☆</b> Đánh giá</a>
+            <a class="nav-link" asp-controller="Shop" asp-action="Index"><b>↗</b> Xem cửa hàng</a>
+        </nav>
+        <div class="sidebar-user">
+            <div class="avatar">@(User.Identity?.IsAuthenticated == true ? User.Identity.Name?.Substring(0, 1).ToUpper() : "?")</div>
+            <div><strong>@(User.Identity?.IsAuthenticated == true ? User.Identity.Name : "Khách")</strong><span>@(User.IsInRole("Admin") ? "Quản trị viên" : User.IsInRole("Employee") ? "Nhân viên" : "Khách hàng")</span></div>
+            @if (User.Identity?.IsAuthenticated == true)
+            {
+                <form asp-controller="Shop" asp-action="Logout" method="post">@Html.AntiForgeryToken()<button type="submit" title="Đăng xuất" style="border:0;background:transparent;color:#aaa">⏻</button></form>
+            }
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <header class="topbar">
+            <div class="search-box"><span>⌕</span><input placeholder="Tìm kiếm sản phẩm, đơn hàng..." /></div>
+            <div class="top-actions"><button>?</button><button class="bell">♢<i></i></button><div class="mini-avatar">TM</div></div>
+        </header>
+        <div class="content-area">
+            @RenderBody()
+        </div>
+    </main>
+
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
