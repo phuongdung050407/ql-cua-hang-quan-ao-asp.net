@@ -30,7 +30,10 @@
                 <span asp-validation-for="Email" class="text-danger"></span>
             </label>
             <label>Mật khẩu
-                <input asp-for="Password" type="password" required placeholder="Nhập mật khẩu" />
+                <div class="password-field">
+                    <input asp-for="Password" type="password" required placeholder="Nhập mật khẩu" />
+                    <button type="button" class="toggle-password" aria-label="Hiện mật khẩu" onclick="var i=this.previousElementSibling;i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'👁':'◉';this.setAttribute('aria-label',i.type==='password'?'Hiện mật khẩu':'Ẩn mật khẩu')">👁</button>
+                </div>
                 <span asp-validation-for="Password" class="text-danger"></span>
             </label>
             <div class="auth-options"><label><input asp-for="RememberMe" type="checkbox" /> Ghi nhớ tôi</label><a href="#">Quên mật khẩu?</a></div>
