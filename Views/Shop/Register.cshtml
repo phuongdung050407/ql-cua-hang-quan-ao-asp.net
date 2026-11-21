@@ -20,18 +20,22 @@
             @Html.AntiForgeryToken()
             <h1>Tạo tài khoản</h1>
             <p>Đã có tài khoản? <a href="/Shop/Login">Đăng nhập</a></p>
-            <label>Họ và tên<input asp-for="FullName" required placeholder="Nguyễn Văn An" /><span asp-validation-for="FullName" class="text-danger"></span></label>
+            <div class="register-progress"><span class="active">1. Tài khoản</span><i></i><span>2. Hoàn tất</span></div>
+            <label>Họ và tên<input asp-for="FullName" minlength="3" required placeholder="Nguyễn Văn An" /><span asp-validation-for="FullName" class="text-danger"></span></label>
             <label>Email<input asp-for="Email" type="email" required placeholder="email@example.com" /><span asp-validation-for="Email" class="text-danger"></span></label>
-            <label>Số điện thoại<input asp-for="Phone" required placeholder="0912 345 678" /><span asp-validation-for="Phone" class="text-danger"></span></label>
+            <label>Số điện thoại<input asp-for="Phone" pattern="[0-9+ ]{9,15}" required placeholder="0912 345 678" /><span asp-validation-for="Phone" class="text-danger"></span></label>
             <label>Mật khẩu
-                <div class="password-field"><input asp-for="Password" type="password" required placeholder="Ít nhất 8 ký tự" /><button type="button" class="toggle-password" aria-label="Hiện mật khẩu" onclick="var i=this.previousElementSibling;i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'👁':'◉'">👁</button></div>
+                <div class="password-field"><input id="register-password" asp-for="Password" type="password" minlength="8" required placeholder="Ít nhất 8 ký tự" /><button type="button" class="toggle-password" aria-label="Hiện mật khẩu" onclick="var i=this.previousElementSibling;i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'👁':'◉'">👁</button></div>
                 <span asp-validation-for="Password" class="text-danger"></span>
+                <div class="password-strength"><span></span><small>Nhập mật khẩu</small></div>
             </label>
             <label>Xác nhận mật khẩu
-                <div class="password-field"><input asp-for="ConfirmPassword" type="password" required placeholder="Nhập lại mật khẩu" /><button type="button" class="toggle-password" aria-label="Hiện mật khẩu" onclick="var i=this.previousElementSibling;i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'👁':'◉'">👁</button></div>
+                <div class="password-field"><input id="confirm-password" asp-for="ConfirmPassword" type="password" minlength="8" required placeholder="Nhập lại mật khẩu" /><button type="button" class="toggle-password" aria-label="Hiện mật khẩu" onclick="var i=this.previousElementSibling;i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'👁':'◉'">👁</button></div>
                 <span asp-validation-for="ConfirmPassword" class="text-danger"></span>
+                <small id="password-match" class="password-match"></small>
             </label>
-            <button type="submit" class="checkout-button">Tạo tài khoản</button>
+            <label class="terms-check"><input type="checkbox" id="register-terms" required /> Tôi đồng ý với <a href="#">Điều khoản sử dụng</a> và <a href="#">Chính sách bảo mật</a></label>
+            <button type="submit" class="checkout-button" id="register-submit">Tạo tài khoản</button>
         </form>
     </section>
 </main>

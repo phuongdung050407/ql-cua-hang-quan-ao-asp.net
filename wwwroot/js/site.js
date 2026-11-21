@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const row = document.createElement('article');
                 row.className = 'cart-item';
                 row.dataset.price = item.price;
-                row.innerHTML = `<img src="${item.image}" alt="${item.name}"><div class="cart-item-info"><small>${item.category}</small><h3>${item.name}</h3><span>Kích thước: M &nbsp; Màu: Trắng</span></div><div class="quantity"><button type="button">−</button><strong>${item.quantity}</strong><button type="button">＋</button></div><strong>${money(item.price * item.quantity)}</strong><button type="button" class="remove">×</button>`;
+                row.innerHTML = `<img src="${item.image}" alt="${item.name}"><div class="cart-item-info"><small>${item.category}</small><h3>${item.name}</h3><div class="cart-options"><label>Kích thước<select><option>S</option><option selected>M</option><option>L</option><option>XL</option></select></label><label>Màu sắc<select><option>Trắng</option><option>Đen</option><option>Be</option></select></label></div></div><div class="quantity"><button type="button" aria-label="Giảm số lượng">−</button><strong>${item.quantity}</strong><button type="button" aria-label="Tăng số lượng">＋</button></div><strong class="line-price">${money(item.price * item.quantity)}</strong><button type="button" class="remove" aria-label="Xóa sản phẩm">×</button>`;
                 const quantityButtons = row.querySelectorAll('.quantity button');
                 quantityButtons[0].addEventListener('click', () => { item.quantity = Math.max(1, item.quantity - 1); write(cartKey, cart); renderCart(); });
                 quantityButtons[1].addEventListener('click', () => { item.quantity += 1; write(cartKey, cart); renderCart(); });
@@ -118,6 +118,11 @@ document.addEventListener('DOMContentLoaded', () => {
             document.querySelectorAll('.order-summary > div:first-of-type strong').forEach(el => el.textContent = money(subtotal));
             document.querySelectorAll('.order-summary .total strong').forEach(el => el.textContent = money(subtotal - coupon));
             document.querySelectorAll('.cart-link b').forEach(badge => badge.textContent = String(cart.reduce((sum, item) => sum + item.quantity, 0)));
+            const checkoutLink = document.querySelector('.order-summary > .checkout-button');
+            if (checkoutLink) checkoutLink.classList.toggle('disabled', cart.length === 0);
+            if (!cart.length) {
+                cartContainer.innerHTML = '<div class="empty-cart"><div>♡</div><h2>Giỏ hàng đang trống</h2><p>Hãy chọn một sản phẩm phù hợp với phong cách của bạn.</p><a class="checkout-button" href="/Shop">Khám phá sản phẩm</a></div>';
+            }
         };
 
         renderCart();
@@ -191,8 +196,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    document.querySelectorAll('.promotion-card button').forEach(button => {
-        button.addEventListener('click', () => toast('Đã mở chi tiết khuyến mãi'));
+    document.querySelectorAll('.promotion-card button, .promotion-detail').forEach(button => {
+        button.addEventListener('click', () => toast(`Khuyến mãi ${button.dataset.code || ''}: ${button.dataset.status || 'Đang chạy'}`));
+    });
+
+    const categoryFilter = document.querySelector('.category-filter');
+    categoryFilter?.addEventListener('change', () => {
+        document.querySelectorAll('.table-panel tbody tr[data-category]').forEach(row => {
+            row.hidden = categoryFilter.value !== '' && row.dataset.category !== categoryFilter.value;
+        });
     });
 
     document.querySelectorAll('.category-card').forEach(card => {
@@ -200,10 +212,36 @@ document.addEventListener('DOMContentLoaded', () => {
         card.addEventListener('click', () => toast(`Đang mở danh mục: ${card.querySelector('strong')?.textContent || ''}`));
     });
 
+    document.querySelectorAll('.order-status-save').forEach(button => {
+        button.addEventListener('click', () => {
+            const row = button.closest('tr');
+            const select = row?.querySelector('.order-status');
+            if (!select) return;
+            const form = document.createElement('form');
+            form.method = 'post'; form.action = '/Management/UpdateOrderStatus';
+            [{name:'code',value:select.dataset.code},{name:'status',value:select.value}].forEach(field => {
+                const input = document.createElement('input'); input.type='hidden'; input.name=field.name; input.value=field.value; form.appendChild(input);
+            });
+            document.body.appendChild(form); form.submit();
+        });
+    });
+
     document.querySelectorAll('.status-save').forEach(button => {
         button.addEventListener('click', () => {
-            const select = button.closest('tr')?.querySelector('.status-select');
-            toast(select ? `Đã lưu trạng thái: ${select.value}` : 'Đã lưu trạng thái');
+            const row = button.closest('tr');
+            const select = row?.querySelector('.status-select');
+            if (!select) return;
+            const form = document.createElement('form');
+            form.method = 'post';
+            form.action = '/Management/UpdateStatus';
+            const fields = { type: button.dataset.type, id: button.dataset.id, status: select.value };
+            Object.entries(fields).forEach(([name, value]) => {
+                const input = document.createElement('input');
+                input.type = 'hidden'; input.name = name; input.value = value || '';
+                form.appendChild(input);
+            });
+            document.body.appendChild(form);
+            form.submit();
         });
     });
 
@@ -220,6 +258,42 @@ document.addEventListener('DOMContentLoaded', () => {
         select.dispatchEvent(new Event('change'));
     });
 
+    const passwordInput = document.querySelector('#register-password');
+    const confirmInput = document.querySelector('#confirm-password');
+    const termsInput = document.querySelector('#register-terms');
+    const registerSubmit = document.querySelector('#register-submit');
+
+    const updatePasswordStrength = () => {
+        if (!passwordInput) return;
+        const value = passwordInput.value;
+        const checks = [value.length >= 8, /[A-Z]/.test(value), /[0-9]/.test(value), /[^A-Za-z0-9]/.test(value)].filter(Boolean).length;
+        const bar = document.querySelector('.password-strength');
+        const label = bar?.querySelector('small');
+        if (bar) bar.dataset.level = String(checks);
+        if (label) label.textContent = ['Chưa nhập', 'Mật khẩu yếu', 'Mật khẩu khá', 'Mật khẩu mạnh', 'Mật khẩu rất mạnh'][checks];
+        updatePasswordMatch();
+    };
+
+    const updatePasswordMatch = () => {
+        if (!confirmInput) return;
+        const match = document.querySelector('#password-match');
+        if (!confirmInput.value) { if (match) match.textContent = ''; return; }
+        const valid = confirmInput.value === passwordInput?.value;
+        if (match) { match.textContent = valid ? '✓ Mật khẩu khớp' : 'Mật khẩu xác nhận chưa khớp'; match.className = `password-match ${valid ? 'match' : 'not-match'}`; }
+    };
+
+    passwordInput?.addEventListener('input', updatePasswordStrength);
+    confirmInput?.addEventListener('input', updatePasswordMatch);
+
+    registerSubmit?.addEventListener('click', event => {
+        if (!termsInput?.checked) {
+            event.preventEvent?.();
+            event.preventDefault();
+            toast('Vui lòng đồng ý với điều khoản sử dụng');
+            termsInput?.focus();
+        }
+    });
+
     document.querySelectorAll('.action-select').forEach(select => {
         select.addEventListener('change', () => {
             if (!select.value) return;
@@ -229,6 +303,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 reply:'Đã mở hộp trả lời', hide:'Đã ẩn đánh giá'
             };
             toast(labels[select.value] || 'Đã thực hiện thao tác');
+            if (select.classList.contains('review-action')) {
+                const badge = select.closest('.review-row')?.querySelector('.badge');
+                if (select.value === 'approve' && badge) { badge.textContent='Đã duyệt'; badge.className='badge badge-success'; }
+                if (select.value === 'hide' && badge) { badge.textContent='Đã ẩn'; badge.className='badge badge-danger'; }
+            }
             if (select.value === 'delete') {
                 const row = select.closest('tr');
                 if (row && confirm('Bạn có chắc muốn xóa mục này?')) row.remove();

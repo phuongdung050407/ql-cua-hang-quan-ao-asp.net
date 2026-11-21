@@ -1,0 +1,43 @@
+@model List<CustomerOrderViewModel>
+@{ Layout = null; }
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Lịch sử mua hàng - FashionHub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/css/store.css" />
+</head>
+<body>
+<header class="store-header">
+    <a class="store-brand" href="/Shop"><span>F</span> FashionHub</a>
+    <nav><a href="/Shop">Tiếp tục mua sắm</a><a class="cart-link" href="/Shop/Cart">Giỏ hàng <b>0</b></a></nav>
+</header>
+<main class="history-page">
+    <div class="page-heading"><div><span class="eyebrow">TÀI KHOẢN CỦA TÔI</span><h1>Lịch sử mua hàng</h1></div></div>
+    @if (Model.Count == 0)
+    {
+        <section class="empty-history"><div>⌑</div><h2>Chưa có đơn hàng</h2><p>Đơn hàng của bạn sẽ xuất hiện tại đây sau khi thanh toán.</p><a class="checkout-button" href="/Shop">Khám phá sản phẩm</a></section>
+    }
+    else
+    {
+        <section class="history-list">
+        @foreach (var order in Model)
+        {
+            <article class="history-order">
+                <header><div><small>Mã đơn</small><strong>@order.Code</strong></div><div><small>Ngày đặt</small><strong>@order.CreatedAt.ToString("dd/MM/yyyy")</strong></div><div><small>Trạng thái</small><span class="history-status">@order.Status</span></div></header>
+                <div class="history-items">
+                    @foreach (var item in order.Items)
+                    {
+                        <div><img src="@item.Image" alt="@item.Name"><div><small>@item.Category</small><strong>@item.Name</strong></div><b>@item.Price.ToString("N0") đ</b></div>
+                    }
+                </div>
+                <footer><div><span>Thanh toán:</span> <strong>@order.PaymentMethod</strong></div><div><span>Tổng cộng:</span> <strong>@order.Total.ToString("N0") đ</strong></div><a href="/Shop/Invoice/@order.Code">Xem hóa đơn</a></footer>
+            </article>
+        }
+        </section>
+    }
+</main>
+<script src="~/js/site.js" asp-append-version="true"></script>
+</body>
+</html>

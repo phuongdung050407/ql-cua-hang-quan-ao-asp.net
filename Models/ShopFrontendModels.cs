@@ -54,4 +54,19 @@ public class StoreViewModel
 {
     public List<ProductViewModel> Products { get; set; } = [];
     public List<CategoryViewModel> Categories { get; set; } = [];
+    public List<ProductViewModel> Recommendations { get; set; } = [];
+}
+
+public class CustomerOrderViewModel
+{
+    public string Code { get; set; } = "";
+    public string CustomerName { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string Phone { get; set; } = "";
+    public string Address { get; set; } = "";
+    public string PaymentMethod { get; set; } = "";
+    public string Status { get; set; } = "Chờ xác nhận";
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+    public decimal Total { get; set; }
+    public List<ProductViewModel> Items { get; set; } = [];
 }
