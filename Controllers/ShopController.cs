@@ -18,45 +18,272 @@ public class ShopController : Controller
 
     private static readonly ConcurrentDictionary<string, (string Password, string Name, string Role)> RegisteredUsers = new();
 
-    private static readonly List<ProductViewModel> Products =
-    [
-        new() { Id=1, Name="Áo sơ mi linen trắng", Category="Áo sơ mi", Price=450000, Stock=20, Status="Còn hàng", Image="https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=600" },
-        new() { Id=2, Name="Váy hoa midi", Category="Váy đầm", Price=680000, Stock=14, Status="Còn hàng", Image="https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=600" },
-        new() { Id=3, Name="Quần jean nữ slim", Category="Quần", Price=550000, Stock=9, Status="Còn hàng", Image="https://images.unsplash.com/photo-1542272604-787c3835535d?w=600" },
-        new() { Id=4, Name="Áo khoác denim", Category="Áo khoác", Price=890000, Stock=7, Status="Còn hàng", Image="https://images.unsplash.com/photo-1523205771623-e0faa4d2813d?w=600" },
-        new() { Id=5, Name="Đầm suông mùa hè", Category="Váy đầm", Price=720000, Stock=11, Status="Còn hàng", Image="https://images.unsplash.com/photo-1566174053879-31528523f8ae?w=600" },
-        new() { Id=6, Name="Áo thun basic", Category="Áo thun", Price=290000, Stock=25, Status="Còn hàng", Image="https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600" }
-    ];
+    private static List<ProductViewModel> Products => ShopDataStore.Products;
+
+    private string CustomerKey
+    {
+        get
+        {
+            var email = User.FindFirstValue(ClaimTypes.Email);
+            if (!string.IsNullOrWhiteSpace(email))
+                return email;
+
+            const string cookieName = "fashionhub_customer";
+            if (Request.Cookies.TryGetValue(cookieName, out var visitorKey) && !string.IsNullOrWhiteSpace(visitorKey))
+                return visitorKey;
+
+            visitorKey = $"Guest-{Guid.NewGuid():N}";
+            Response.Cookies.Append(cookieName, visitorKey, new CookieOptions
+            {
+                HttpOnly = true,
+                IsEssential = true,
+                Expires = DateTimeOffset.Now.AddDays(30)
+            });
+            return visitorKey;
+        }
+    }
+
+    private static void UpdateHistory(Dictionary<string, List<ProductViewModel>> store, string key, ProductViewModel product)
+    {
+        if (!store.TryGetValue(key, out var history))
+        {
+            history = [];
+            store[key] = history;
+        }
+        history.RemoveAll(p => p.Id == product.Id);
+        history.Insert(0, product);
+    }
+
+    private List<ProductViewModel> BuildRecommendations(int take = 4)
+    {
+        var key = CustomerKey;
+        var scores = Products.ToDictionary(p => p.Id, _ => 0d);
+
+        AddWeightedHistory(scores, key, ShopDataStore.PurchaseHistory, 6);
+        AddWeightedHistory(scores, key, ShopDataStore.WishlistHistory, 5);
+        AddWeightedHistory(scores, key, ShopDataStore.CartHistory, 4);
+        AddWeightedHistory(scores, key, ShopDataStore.ViewedHistory, 2);
+
+        if (ShopDataStore.SearchHistory.TryGetValue(key, out var searches))
+        {
+            foreach (var search in searches.Take(8))
+            {
+                foreach (var product in Products.Where(p =>
+                    p.Name.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                    p.Category.Contains(search, StringComparison.OrdinalIgnoreCase)))
+                    scores[product.Id] += 3;
+            }
+        }
+
+        if (scores.Values.All(score => score == 0))
+        {
+            var popularIds = new[] { 2, 1, 5, 3, 6, 4 };
+            var coldStart = popularIds
+                .Select(id => Products.FirstOrDefault(p => p.Id == id))
+                .Where(p => p != null)
+                .Cast<ProductViewModel>()
+                .Where(p => p.Stock > 0)
+                .Take(take)
+                .ToList();
+            if (coldStart.Count >= take)
+                return coldStart;
+        }
+
+        var candidates = scores
+            .Select(entry =>
+            {
+                var product = Products.First(p => p.Id == entry.Key);
+                var stockBonus = product.Stock > 0 ? 0.5 : -10;
+                var recentPurchase = ShopDataStore.PurchaseHistory.TryGetValue(key, out var purchased) &&
+                                     purchased.Take(3).Any(p => p.Id == product.Id);
+                return (Product: product, Score: entry.Value + stockBonus - (recentPurchase ? 1 : 0));
+            })
+            .Where(item => item.Product.Stock > 0)
+            .OrderByDescending(item => item.Score)
+            .ThenByDescending(item => item.Product.Id % 4)
+            .ToList();
+
+        var selected = new List<ProductViewModel>();
+        var categoryCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var candidate in candidates)
+        {
+            categoryCounts.TryGetValue(candidate.Product.Category, out var count);
+            if (count >= 2)
+                continue;
+
+            selected.Add(candidate.Product);
+            categoryCounts[candidate.Product.Category] = count + 1;
+            if (selected.Count == take)
+                break;
+        }
+
+        foreach (var candidate in candidates)
+        {
+            if (selected.Count == take)
+                break;
+            if (!selected.Contains(candidate.Product))
+                selected.Add(candidate.Product);
+        }
+
+        return selected.Take(take).ToList();
+    }
+
+    private static void AddWeightedHistory(
+        Dictionary<int, double> scores,
+        string key,
+        Dictionary<string, List<ProductViewModel>> store,
+        double weight)
+    {
+        if (!store.TryGetValue(key, out var history))
+            return;
+
+        for (var i = 0; i < history.Count; i++)
+        {
+            var product = history[i];
+            if (scores.ContainsKey(product.Id))
+                scores[product.Id] += weight - i * 0.15;
+
+            foreach (var sameCategory in Products.Where(p => p.Category.Equals(product.Category, StringComparison.OrdinalIgnoreCase)))
+                scores[sameCategory.Id] += (weight * 0.35) - i * 0.05;
+        }
+    }
 
     public IActionResult Index(string? search, string? category)
     {
         var items = Products.Where(p => (string.IsNullOrEmpty(search) || p.Name.Contains(search, StringComparison.OrdinalIgnoreCase)) && (string.IsNullOrEmpty(category) || p.Category == category)).ToList();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var key = CustomerKey;
+            if (!ShopDataStore.SearchHistory.TryGetValue(key, out var searches))
+            {
+                searches = [];
+                ShopDataStore.SearchHistory[key] = searches;
+            }
+            searches.RemoveAll(value => value.Equals(search.Trim(), StringComparison.OrdinalIgnoreCase));
+            searches.Insert(0, search.Trim());
+        }
+
+        var recommendations = BuildRecommendations();
+
         return View(new StoreViewModel
         {
             Products = items,
-            Categories =
-            [
-                new() { Id=1, Name="Áo sơ mi", ProductCount=18 }, new() { Id=2, Name="Áo thun", ProductCount=24 },
-                new() { Id=3, Name="Quần", ProductCount=16 }, new() { Id=4, Name="Váy đầm", ProductCount=21 }
-            ]
+            Recommendations = recommendations,
+            Categories = ShopDataStore.Categories
         });
     }
 
     public IActionResult Cart() => View(Products.Take(2).ToList());
+    public IActionResult Wishlist()
+    {
+        var items = ShopDataStore.WishlistHistory.TryGetValue(CustomerKey, out var saved)
+            ? saved.Where(p => p.Stock > 0).ToList()
+            : [];
+        return View(items);
+    }
     public IActionResult Checkout() => View(Products.Take(2).ToList());
 
     public IActionResult Detail(int id)
     {
         var product = Products.FirstOrDefault(p => p.Id == id) ?? Products.First();
-        ViewBag.Related = Products.Where(p => p.Id != product.Id).Take(4).ToList();
+        UpdateHistory(ShopDataStore.ViewedHistory, CustomerKey, product);
+
+        var complementaryCategories = new[]
+        {
+            ("Áo sơ mi", new[] { "Quần", "Váy đầm", "Áo khoác" }),
+            ("Áo thun", new[] { "Quần", "Áo khoác", "Váy đầm" }),
+            ("Quần", new[] { "Áo thun", "Áo sơ mi", "Áo khoác" }),
+            ("Váy đầm", new[] { "Áo khoác", "Áo sơ mi", "Áo thun" }),
+            ("Áo khoác", new[] { "Quần", "Váy đầm", "Áo thun" })
+        }.FirstOrDefault(pair => pair.Item1 == product.Category).Item2 ?? [];
+
+        var related = Products
+            .Where(p => p.Id != product.Id && p.Stock > 0)
+            .OrderByDescending(p => p.Category == product.Category)
+            .ThenByDescending(p => complementaryCategories.Contains(p.Category))
+            .ThenBy(p => Math.Abs(p.Price - product.Price))
+            .Take(4)
+            .ToList();
+        ViewBag.Related = related;
         return View(product);
     }
 
     [HttpPost]
-    [ValidateAntiForgeryToken]
-    public IActionResult PlaceOrder()
+    [IgnoreAntiforgeryToken]
+    public IActionResult RecordInteraction(int id, string type)
     {
-        TempData["OrderCode"] = "DH-" + DateTime.Now.ToString("yyMMddHHmm");
+        var product = Products.FirstOrDefault(p => p.Id == id);
+        if (product == null)
+            return NotFound();
+
+        var key = CustomerKey;
+        switch (type)
+        {
+            case "cart":
+                UpdateHistory(ShopDataStore.CartHistory, key, product);
+                break;
+            case "wishlist":
+                UpdateHistory(ShopDataStore.WishlistHistory, key, product);
+                break;
+            case "wishlist_remove":
+                if (ShopDataStore.WishlistHistory.TryGetValue(key, out var wishlist))
+                    wishlist.RemoveAll(p => p.Id == product.Id);
+                break;
+            default:
+                return BadRequest();
+        }
+        return Ok();
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public IActionResult PlaceOrder(string fullName, string phone, string email, string address, string payment)
+    {
+        var code = "DH-" + DateTime.Now.ToString("yyMMddHHmm");
+        var items = Products.Take(2).Select(p => new ProductViewModel
+        {
+            Id=p.Id, Name=p.Name, Category=p.Category, Price=p.Price, Stock=p.Stock, Status=p.Status, Image=p.Image
+        }).ToList();
+        var total = items.Sum(p => p.Price);
+
+        var customerName = !string.IsNullOrWhiteSpace(fullName) ? fullName.Trim()
+            : (User.Identity?.IsAuthenticated == true ? User.Identity.Name : "Khách hàng") ?? "Khách hàng";
+        var customerEmail = !string.IsNullOrWhiteSpace(email) ? email.Trim()
+            : User.FindFirstValue(ClaimTypes.Email) ?? "Guest";
+
+        var customerOrder = new CustomerOrderViewModel
+        {
+            Code = code,
+            CustomerName = customerName,
+            Email = customerEmail,
+            Phone = phone ?? "",
+            Address = address ?? "",
+            PaymentMethod = payment == "Bank" ? "Chuyển khoản ngân hàng" : "Thanh toán khi nhận hàng (COD)",
+            Status = "Chờ xác nhận",
+            CreatedAt = DateTime.Now,
+            Total = total,
+            Items = items
+        };
+        ShopDataStore.CustomerOrders.Insert(0, customerOrder);
+
+        if (!ShopDataStore.PurchaseHistory.TryGetValue(customerEmail, out var purchases))
+        {
+            purchases = [];
+            ShopDataStore.PurchaseHistory[customerEmail] = purchases;
+        }
+        foreach (var item in items)
+        {
+            purchases.RemoveAll(p => p.Id == item.Id);
+            purchases.Insert(0, item);
+        }
+
+        ShopDataStore.Orders.Insert(0, new OrderViewModel
+        {
+            Code=code, Customer=customerName, Date=DateTime.Now.ToString("dd/MM/yyyy"), Total=total, Status="Chờ xử lý"
+        });
+
+        TempData["OrderCode"] = code;
+        TempData["Success"] = "Đặt hàng thành công. Gợi ý sản phẩm đã được cập nhật.";
         return RedirectToAction(nameof(OrderSuccess));
     }
 
@@ -68,8 +295,25 @@ public class ShopController : Controller
 
     public IActionResult Invoice(string id)
     {
+        var order = ShopDataStore.CustomerOrders.FirstOrDefault(o => o.Code == id);
+        if (order != null)
+        {
+            ViewBag.OrderCode = order.Code;
+            ViewBag.CustomerOrder = order;
+            return View(order.Items);
+        }
         ViewBag.OrderCode = string.IsNullOrWhiteSpace(id) ? "DH-261119001" : id;
         return View(Products.Take(2).ToList());
+    }
+
+    [Authorize]
+    public IActionResult OrderHistory()
+    {
+        var key = User.FindFirstValue(ClaimTypes.Email) ?? User.Identity?.Name ?? "Guest";
+        var orders = ShopDataStore.CustomerOrders
+            .Where(o => o.Email.Equals(key, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        return View(orders);
     }
 
     [HttpGet]

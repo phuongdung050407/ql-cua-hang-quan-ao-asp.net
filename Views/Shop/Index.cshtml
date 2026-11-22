@@ -20,13 +20,19 @@ else
 {
     <a href="/Shop/Login">Đăng nhập</a>
 }
-<a href="/Shop/Cart" class="cart-link">♡ Giỏ hàng <b>2</b></a></nav></header>
+<a href="/Shop/Cart" class="cart-link">Giỏ hàng <b>2</b></a>
+<a href="/Shop/Wishlist">Yêu thích</a>
+@if (User.Identity?.IsAuthenticated == true)
+{
+    <a href="/Shop/OrderHistory">Đơn mua</a>
+}
+</nav></header>
 <nav class="category-nav"><a href="/Shop">Tất cả</a><a href="/Shop?category=Áo sơ mi">Áo sơ mi</a><a href="/Shop?category=Áo thun">Áo thun</a><a href="/Shop?category=Quần">Quần</a><a href="/Shop?category=Váy đầm">Váy đầm</a><a href="/Shop?category=Áo khoác">Áo khoác</a></nav>
 <main>
 <section class="hero"><div><span class="hero-tag">BỘ SƯU TẬP MỚI</span><h1>Phong cách<br/>dành cho bạn</h1><p>Thời trang hiện đại, chất liệu mềm mại và tự tin trong từng khoảnh khắc.</p><a href="#products">Khám phá ngay <b>→</b></a></div><img src="https://images.unsplash.com/photo-1483985988355-763728e1935b?w=900" alt="Bộ sưu tập thời trang"></section>
 <section id="products" class="store-section"><div class="section-heading"><div><span>SẢN PHẨM</span><h2>Sản phẩm nổi bật</h2></div><a href="/Shop">Xem tất cả →</a></div>
 <div class="product-grid">@foreach (var p in Model.Products){<article class="product-card"><a href="/Shop/Detail/@p.Id" class="product-photo"><img src="@p.Image" alt="@p.Name"><span>New</span></a><button type="button" class="favorite-button" data-wishlist="@p.Id">♡</button><div class="product-info"><small>@p.Category</small><h3><a href="/Shop/Detail/@p.Id">@p.Name</a></h3><div><strong>@p.Price.ToString("N0") đ</strong><button type="button" class="add-button" data-add-cart="@p.Id" data-name="@p.Name" data-price="@((int)p.Price)" data-image="@p.Image" data-category="@p.Category">＋</button></div></div></article>}</div></section>
-<section class="recommend-section"><div class="section-heading"><div><span>DÀNH RIÊNG CHO BẠN</span><h2>Gợi ý cho bạn</h2></div></div><div class="recommend-grid">@foreach (var p in Model.Products.Take(4)){<article class="product-card"><div class="product-photo"><img src="@p.Image" alt="@p.Name"><button>♡</button></div><div class="product-info"><small>@p.Category</small><h3>@p.Name</h3><strong>@p.Price.ToString("N0") đ</strong></div></article>}</div></section>
+<section class="recommend-section"><div class="section-heading"><div><span>GỢI Ý THEO SỞ THÍCH CÁ NHÂN</span><h2>Có thể bạn sẽ thích</h2></div><a href="/Shop">Làm mới gợi ý →</a></div><div class="recommend-grid">@foreach (var p in Model.Recommendations){<article class="product-card"><a href="/Shop/Detail/@p.Id" class="product-photo"><img src="@p.Image" alt="@p.Name"><span class="recommend-label">Gợi ý riêng</span></a><button type="button" class="favorite-button" data-wishlist="@p.Id">♡</button><div class="product-info"><small>@p.Category · Đánh giá 4.8★</small><h3><a href="/Shop/Detail/@p.Id">@p.Name</a></h3><div><strong>@p.Price.ToString("N0") đ</strong><button type="button" class="add-button" data-add-cart="@p.Id" data-name="@p.Name" data-price="@((int)p.Price)" data-image="@p.Image" data-category="@p.Category">＋</button></div></div></article>}</div></section>
 </main><script src="~/js/site.js" asp-append-version="true"></script>
 <footer class="store-footer"><div><h3>FashionHub</h3><p>Phong cách của bạn, thế giới của chúng tôi.</p></div><div><h4>Hỗ trợ</h4><a>Liên hệ</a><a>Chính sách đổi trả</a><a>Câu hỏi thường gặp</a></div><div><h4>Liên hệ</h4><p>hello@fashionhub.vn</p><p>0123 456 789</p></div></footer>
 </body></html>

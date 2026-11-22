@@ -1,3 +1,9 @@
 @{ ViewData["Title"]="Danh mục"; }
-<div class="page-heading"><div><p class="eyebrow">QUẢN LÝ</p><h1>Danh mục sản phẩm</h1></div><button class="primary-button">＋ Thêm danh mục</button></div>
-<section class="category-grid"><article class="category-card"><b>◫</b><div><strong>Áo sơ mi</strong><span>18 sản phẩm</span></div><em>Đang hoạt động</em></article><article class="category-card"><b>◫</b><div><strong>Áo thun</strong><span>24 sản phẩm</span></div><em>Đang hoạt động</em></article><article class="category-card"><b>◫</b><div><strong>Quần</strong><span>16 sản phẩm</span></div><em>Đang hoạt động</em></article><article class="category-card"><b>◫</b><div><strong>Váy đầm</strong><span>21 sản phẩm</span></div><em>Đang hoạt động</em></article><article class="category-card"><b>◫</b><div><strong>Áo khoác</strong><span>9 sản phẩm</span></div><em>Đang hoạt động</em></article><article class="category-card"><b>◫</b><div><strong>Phụ kiện</strong><span>12 sản phẩm</span></div><em>Đang hoạt động</em></article></section>
+<div class="page-heading"><div><p class="eyebrow">QUẢN LÝ</p><h1>Danh mục sản phẩm</h1></div><a class="primary-button" asp-controller="Management" asp-action="Products" style="text-decoration:none;display:inline-flex;align-items:center">＋ Quản lý sản phẩm</a></div>
+<section class="category-grid">
+@foreach(var category in ShopProject.Models.ShopDataStore.Categories)
+{
+    var count = ShopProject.Models.ShopDataStore.Products.Count(p => p.Category == category.Name);
+    <article class="category-card"><b>◫</b><div><strong>@category.Name</strong><span>@count sản phẩm</span></div><em>@category.Status</em></article>
+}
+</section>
