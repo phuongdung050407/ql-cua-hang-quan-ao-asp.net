@@ -1,6 +1,7 @@
 ﻿// Please see documentation at https://learn.microsoft.com/aspnet/core/client-side/bundling-and-minification
 // for details on configuring this project to bundle and minify static web assets.
 
+// Write your JavaScript code.
 document.addEventListener('DOMContentLoaded', () => {
     const money = value => `${Math.max(0, Number(value)).toLocaleString('vi-VN')} đ`;
     const cartKey = 'fashionhub-cart';
@@ -76,6 +77,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const buttons = document.querySelectorAll('.detail-quantity button');
         buttons[0]?.addEventListener('click', () => detailQuantity.textContent = String(Math.max(1, Number(detailQuantity.textContent) - 1)));
         buttons[1]?.addEventListener('click', () => detailQuantity.textContent = String(Number(detailQuantity.textContent) + 1));
+        const addButton = document.querySelector('.detail-actions [data-add-cart]');
+        addButton?.addEventListener('click', () => {
+            const cart = read(cartKey);
+            const id = addButton.dataset.addCart;
+            const quantity = Number(detailQuantity.textContent);
+            const existing = cart.find(item => item.id === id);
+            if (existing) existing.quantity = Number(existing.quantity || 1) + quantity;
+            else cart.push({ id, name:addButton.dataset.name, price:Number(addButton.dataset.price), image:addButton.dataset.image, category:addButton.dataset.category, quantity });
+            write(cartKey, cart); refreshCartBadges();
+        });
     }
 
     const cartContainer = document.querySelector('.cart-items');
@@ -149,6 +160,16 @@ document.addEventListener('DOMContentLoaded', () => {
         option.classList.add('selected');
         const radio = option.querySelector('input[type="radio"]'); if (radio) radio.checked = true;
     }));
+
+    document.querySelectorAll('.table-panel tbody tr').forEach(row => {
+        row.querySelector('.icon-button')?.addEventListener('click', () => toast('Đã mở thao tác cho mục đã chọn'));
+    });
+
+    const productSearch = document.querySelector('.management-toolbar .filter-search input');
+    productSearch?.addEventListener('input', () => {
+        const keyword = productSearch.value.toLowerCase();
+        document.querySelectorAll('.table-panel tbody tr').forEach(row => row.hidden = !row.textContent.toLowerCase().includes(keyword));
+    });
 
     const placeOrderButton = document.querySelector('#place-order-button');
     placeOrderButton?.addEventListener('click', event => {

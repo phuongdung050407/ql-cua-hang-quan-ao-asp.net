@@ -1,4 +1,5 @@
-﻿using System.Security.Claims;
+﻿using System.Collections.Concurrent;
+using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
@@ -30,7 +31,7 @@ public class ShopController : Controller
             var c when c.Contains("quần") => "https://images.unsplash.com/photo-1542272604-787c3835535d?w=600",
             var c when c.Contains("váy") || c.Contains("đầm") => "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=600",
             _ => DefaultProductImage
-        };
+    };
     }
 
     // 1. TRANG CỬA HÀNG: Lấy sản phẩm & danh mục thật từ SQL Server
@@ -48,7 +49,7 @@ public class ShopController : Controller
         }
 
         if (!string.IsNullOrWhiteSpace(category))
-        {
+    {
             query = query.Where(p => p.DanhMuc.TenDanhMuc == category);
         }
 
@@ -95,12 +96,12 @@ public class ShopController : Controller
         long? currentUserId = null;
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (long.TryParse(userIdClaim, out var parsedId))
-        {
+    {
             currentUserId = parsedId;
-        }
+    }
 
         if (currentUserId.HasValue)
-        {
+    {
             _context.LichSuXemSanPhams.Add(new LichSuXemSanPham
             {
                 SanPhamId = dbProduct.Id,
@@ -108,15 +109,15 @@ public class ShopController : Controller
                 ThoiGianXem = DateTime.Now
             });
             await _context.SaveChangesAsync();
-        }
+    }
 
         List<SanPhamGoiYDto> goiYTuSql;
         try
-        {
+    {
             goiYTuSql = await _context.SanPhamGoiYResults
                 .FromSqlInterpolated($"EXEC dbo.sp_GoiYSanPham {currentUserId}, {4}")
                 .ToListAsync();
-        }
+    }
         catch
         {
             goiYTuSql = await _context.SanPhamGoiYResults
@@ -131,7 +132,7 @@ public class ShopController : Controller
             .ToDictionaryAsync(g => g.Key, g => g.First().Url);
 
         ViewBag.Related = goiYTuSql.Select(g => new ProductViewModel
-        {
+    {
             Id = g.Id,
             Name = g.TenSanPham,
             Category = g.TenDanhMuc,

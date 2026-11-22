@@ -53,9 +53,9 @@ public class HomeController : Controller
             var status = stock == 0 ? "Hết hàng" : stock <= 5 ? "Sắp hết" : "Đang bán";
             var img = p.SanPhamAnhs.FirstOrDefault()?.Url;
             if (string.IsNullOrWhiteSpace(img) || !img.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-            {
+    {
                 img = "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=300";
-            }
+    }
 
             return new ProductViewModel
             {
@@ -75,7 +75,7 @@ public class HomeController : Controller
             .ToListAsync();
 
         var recentOrders = dbOrders.Select(o => new OrderViewModel
-        {
+    {
             Code = o.MaDonHang,
             Customer = o.TenNguoiNhan,
             Date = o.ThoiGianTao.ToString("dd/MM/yyyy"),
