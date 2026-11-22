@@ -1,4 +1,60 @@
-@{ ViewData["Title"]="Khuyến mãi"; }
-<div class="page-heading"><div><p class="eyebrow">MARKETING</p><h1>Khuyến mãi</h1></div><button class="primary-button">＋ Tạo khuyến mãi</button></div>
-<div class="stats-grid people-stats"><article class="stat-card"><div class="stat-icon violet">%</div><div><p>Đang hoạt động</p><strong>5</strong></div></article><article class="stat-card"><div class="stat-icon blue">▣</div><div><p>Đã sử dụng</p><strong>328</strong></div></article><article class="stat-card"><div class="stat-icon green">↗</div><div><p>Doanh thu</p><strong>48 tr</strong></div></article><article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Sắp kết thúc</p><strong>2</strong></div></article></div>
-<section class="promotion-grid"><article class="promotion-card"><div class="promo-top"><span>GIẢM GIÁ</span><em>Đang chạy</em></div><h2>Ưu đãi tháng mới</h2><strong>20% OFF</strong><p>Mã: <b>NEWYEAR20</b></p><div><span>01/11 - 30/11</span><button>Chi tiết</button></div></article><article class="promotion-card"><div class="promo-top"><span>MUA 2 GIẢM</span><em>Đang chạy</em></div><h2>Combo mùa đông</h2><strong>GIẢM 150K</strong><p>Mã: <b>WINTER150</b></p><div><span>15/11 - 15/12</span><button>Chi tiết</button></div></article><article class="promotion-card"><div class="promo-top"><span>MIỄN PHÍ SHIP</span><em>Sắp diễn ra</em></div><h2>Giao hàng ưu đãi</h2><strong>FREESHIP</strong><p>Mã: <b>SHIP0D</b></p><div><span>20/11 - 25/11</span><button>Chi tiết</button></div></article></section>
+@model List<ShopProject.Models.MaGiamGium>
+@{
+    ViewData["Title"] = "Khuyến mãi";
+    var dangHoatDong = Model.Count(m => m.TrangThai && m.NgayKetThuc >= DateTime.Now);
+    var daSuDung = Model.Sum(m => m.SoLuongDaDung);
+    var sapKetThuc = Model.Count(m => m.TrangThai && m.NgayKetThuc >= DateTime.Now && m.NgayKetThuc <= DateTime.Now.AddDays(7));
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">MARKETING</p>
+        <h1>Khuyến mãi</h1>
+    </div>
+    <button type="button" class="primary-button" onclick="document.getElementById('addPromoBox').style.display='block'">＋ Tạo khuyến mãi</button>
+</div>
+
+<div id="addPromoBox" class="panel" style="display:none;margin-bottom:20px;padding:18px">
+    <form method="post" action="/Management/AddPromotion" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        @Html.AntiForgeryToken()
+        <input name="maVoucher" placeholder="Mã voucher (VD: SALE50K)" required style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;text-transform:uppercase" />
+        <input name="moTa" placeholder="Tên chương trình khuyến mãi" required style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;min-width:220px" />
+        <select name="loaiGiam" style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px">
+            <option value="Phan_tram">Giảm theo %</option>
+            <option value="Tien_mat">Giảm tiền mặt (VNĐ)</option>
+        </select>
+        <input name="giaTri" type="number" min="1" value="15" required placeholder="Giá trị giảm" style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;width:130px" />
+        <input name="soLuongPhatHanh" type="number" min="1" value="100" required placeholder="Số lượng" style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;width:110px" />
+        <button type="submit" class="primary-button">Tạo mã</button>
+        <button type="button" class="icon-button" onclick="document.getElementById('addPromoBox').style.display='none'">Hủy</button>
+    </form>
+</div>
+
+<div class="stats-grid people-stats">
+    <article class="stat-card"><div class="stat-icon violet">%</div><div><p>Đang hoạt động</p><strong>@dangHoatDong</strong></div></article>
+    <article class="stat-card"><div class="stat-icon blue">▣</div><div><p>Đã sử dụng</p><strong>@daSuDung</strong></div></article>
+    <article class="stat-card"><div class="stat-icon green">↗</div><div><p>Tổng mã phát hành</p><strong>@Model.Sum(m => m.SoLuongPhatHanh)</strong></div></article>
+    <article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Sắp kết thúc</p><strong>@sapKetThuc</strong></div></article>
+</div>
+
+<section class="promotion-grid">
+    @foreach (var m in Model)
+    {
+        var isRunning = m.TrangThai && m.NgayKetThuc >= DateTime.Now;
+        var discountLabel = m.LoaiGiam == "Phan_tram"
+            ? $"{m.GiaTri:N0}% OFF"
+            : $"GIẢM {m.GiaTri:N0} Đ";
+        <article class="promotion-card">
+            <div class="promo-top">
+                <span>@(m.LoaiGiam == "Phan_tram" ? "GIẢM PHẦN TRĂM" : "GIẢM TIỀN MẶT")</span>
+                <em>@(isRunning ? "Đang chạy" : "Hết hạn")</em>
+            </div>
+            <h2>@(string.IsNullOrWhiteSpace(m.MoTa) ? "Ưu đãi khách hàng" : m.MoTa)</h2>
+            <strong>@discountLabel</strong>
+            <p>Mã: <b>@m.MaVoucher</b> (Đã dùng: @m.SoLuongDaDung/@m.SoLuongPhatHanh)</p>
+            <div>
+                <span>@m.NgayBatDau.ToString("dd/MM") - @m.NgayKetThuc.ToString("dd/MM/yyyy")</span>
+                <span>Đơn tối thiểu @m.DonToiThieu.ToString("N0")đ</span>
+            </div>
+        </article>
+    }
+</section>

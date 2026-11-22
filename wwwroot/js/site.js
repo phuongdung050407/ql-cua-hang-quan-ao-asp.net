@@ -29,15 +29,18 @@ document.addEventListener('DOMContentLoaded', () => {
             event.preventDefault();
             const cart = read(cartKey);
             const id = button.dataset.addCart;
+            const detailQtyEl = document.querySelector('.detail-quantity strong');
+            const qtyToAdd = detailQtyEl && button.closest('.detail-actions') ? Number(detailQtyEl.textContent || 1) : 1;
+
             const existing = cart.find(item => item.id === id);
-            if (existing) existing.quantity = Number(existing.quantity || 1) + 1;
+            if (existing) existing.quantity = Number(existing.quantity || 1) + qtyToAdd;
             else cart.push({
                 id,
                 name: button.dataset.name || 'Sản phẩm',
                 price: Number(button.dataset.price || 0),
                 image: button.dataset.image || '',
                 category: button.dataset.category || '',
-                quantity: 1
+                quantity: qtyToAdd
             });
             write(cartKey, cart);
             refreshCartBadges();
@@ -130,6 +133,28 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    // Hiển thị đúng các sản phẩm đã chọn ở trang Thanh toán (Checkout)
+    const checkoutPage = document.querySelector('.checkout-page');
+    if (checkoutPage) {
+        const cart = read(cartKey);
+        const summaryBox = checkoutPage.querySelector('.order-summary');
+        if (summaryBox && cart.length) {
+            summaryBox.querySelectorAll('.summary-product').forEach(el => el.remove());
+            const totalDiv = summaryBox.querySelector('.total');
+            let subtotal = 0;
+            cart.forEach(item => {
+                subtotal += item.price * item.quantity;
+                const prodDiv = document.createElement('div');
+                prodDiv.className = 'summary-product';
+                prodDiv.innerHTML = `<img src="${item.image}"><div><strong>${item.name}</strong><small>Số lượng: ${item.quantity}</small></div><b>${money(item.price * item.quantity)}</b>`;
+                summaryBox.insertBefore(prodDiv, totalDiv);
+            });
+            const coupon = sessionStorage.getItem('fashionhub-coupon') === 'NEWYEAR20' ? 150000 : 0;
+            const totalStrong = totalDiv?.querySelector('strong');
+            if (totalStrong) totalStrong.textContent = money(subtotal - coupon);
+        }
+    }
+
     document.querySelectorAll('.payment-option').forEach(option => option.addEventListener('click', () => {
         document.querySelectorAll('.payment-option').forEach(item => item.classList.remove('selected'));
         option.classList.add('selected');
@@ -149,10 +174,39 @@ document.addEventListener('DOMContentLoaded', () => {
     const placeOrderButton = document.querySelector('#place-order-button');
     placeOrderButton?.addEventListener('click', event => {
         const checkoutForm = document.querySelector('#checkout-form');
+        const placeForm = document.querySelector('#place-order-form');
+        const cart = read(cartKey);
+
+        if (!cart.length) {
+            event.preventDefault();
+            toast('Giỏ hàng của bạn đang trống!');
+            return;
+        }
+
         if (checkoutForm && !checkoutForm.checkValidity()) {
             event.preventDefault();
             checkoutForm.reportValidity();
             toast('Vui lòng nhập đầy đủ thông tin giao hàng');
+            return;
+        }
+
+        if (placeForm && checkoutForm) {
+            placeForm.querySelectorAll('.dynamic-order-field').forEach(el => el.remove());
+            const appendField = (name, val) => {
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = name;
+                input.value = val ?? '';
+                input.className = 'dynamic-order-field';
+                placeForm.appendChild(input);
+            };
+
+            const fd = new FormData(checkoutForm);
+            fd.forEach((value, key) => appendField(key, value));
+            appendField('cartJson', JSON.stringify(cart));
+            appendField('couponCode', sessionStorage.getItem('fashionhub-coupon') || '');
+            localStorage.removeItem(cartKey);
+            sessionStorage.removeItem('fashionhub-coupon');
         }
     });
 
@@ -183,12 +237,18 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.table-panel tbody tr').forEach(row => {
         const status = row.querySelector('.badge');
         row.querySelector('.icon-button')?.addEventListener('click', () => {
-            if (!status) { toast('Đã mở menu thao tác'); return; }
+            if (!status) { toast('Đã mở thao tác cho mục đã chọn'); return; }
             const active = status.classList.contains('badge-danger');
             status.textContent = active ? 'Hoạt động' : (status.textContent.trim() === 'Hoạt động' ? 'Tạm khóa' : status.textContent.trim());
             status.className = active ? 'badge badge-success' : (status.textContent.trim() === 'Tạm khóa' ? 'badge badge-danger' : status.className);
             toast(status.textContent.trim() === 'Tạm khóa' ? 'Đã khóa tài khoản' : 'Đã cập nhật trạng thái');
         });
+    });
+
+    const productSearch = document.querySelector('.management-toolbar .filter-search input');
+    productSearch?.addEventListener('input', () => {
+        const keyword = productSearch.value.toLowerCase();
+        document.querySelectorAll('.table-panel tbody tr').forEach(row => row.hidden = !row.textContent.toLowerCase().includes(keyword));
     });
 
     document.querySelectorAll('.promotion-card button').forEach(button => {
@@ -224,9 +284,9 @@ document.addEventListener('DOMContentLoaded', () => {
         select.addEventListener('change', () => {
             if (!select.value) return;
             const labels = {
-                view:'Đã mở chi tiết', edit:'Đang mở form sửa', delete:'Đã xóa mục đã chọn',
-                adjust:'Đang mở điều chỉnh tồn kho', export:'Đã tạo phiếu xuất kho', approve:'Đã duyệt đánh giá',
-                reply:'Đã mở hộp trả lời', hide:'Đã ẩn đánh giá'
+                view: 'Đã mở chi tiết', edit: 'Đang mở form sửa', delete: 'Đã xóa mục đã chọn',
+                adjust: 'Đang mở điều chỉnh tồn kho', export: 'Đã tạo phiếu xuất kho', approve: 'Đã duyệt đánh giá',
+                reply: 'Đã mở hộp trả lời', hide: 'Đã ẩn đánh giá'
             };
             toast(labels[select.value] || 'Đã thực hiện thao tác');
             if (select.value === 'delete') {

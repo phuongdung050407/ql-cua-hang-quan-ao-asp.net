@@ -1,4 +1,64 @@
-@{ ViewData["Title"]="Đánh giá"; }
-<div class="page-heading"><div><p class="eyebrow">PHẢN HỒI</p><h1>Đánh giá sản phẩm</h1></div></div>
-<div class="stats-grid people-stats"><article class="stat-card"><div class="stat-icon violet">★</div><div><p>Điểm trung bình</p><strong>4.8/5</strong></div></article><article class="stat-card"><div class="stat-icon blue">▤</div><div><p>Tổng đánh giá</p><strong>246</strong></div></article><article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Chờ duyệt</p><strong>8</strong></div></article><article class="stat-card"><div class="stat-icon green">✓</div><div><p>Tỷ lệ hài lòng</p><strong>96%</strong></div></article></div>
-<section class="panel review-panel">@foreach(var r in new[]{("Nguyễn Minh Anh","Áo sơ mi linen","5","Chất vải đẹp, form dáng vừa người. Sẽ tiếp tục mua thêm.","19/11/2026","Đã duyệt"),("Trần Quốc Bảo","Quần jean slim","4","Quần vừa và đẹp, giao hàng nhanh.","18/11/2026","Chờ duyệt"),("Lê Thu Hà","Váy hoa midi","5","Rất đẹp và giống hình. Cảm ơn shop.","18/11/2026","Đã duyệt")}){<article class="review-row"><div class="review-user"><div>@r.Item1.Substring(0,1)</div><span><strong>@r.Item1</strong><small>@r.Item5</small></span></div><div class="review-content"><strong>@r.Item2</strong><div class="stars">★★★★★</div><p>@r.Item4</p></div><span class="badge @(r.Item6=="Đã duyệt"?"badge-success":"badge-warning")">@r.Item6</span><select class="action-select"><option value="">Thao tác</option><option value="approve">Duyệt</option><option value="reply">Trả lời</option><option value="hide">Ẩn đánh giá</option></select></article>}</section>
+@model List<ShopProject.Models.DanhGium>
+@{
+    ViewData["Title"] = "Đánh giá";
+    var avgStar = Model.Any() ? Model.Average(r => r.SoSao) : 5.0;
+    var choDuyet = Model.Count(r => r.TrangThai == "Cho_duyet");
+    var haiLong = Model.Any() ? (int)Math.Round(Model.Count(r => r.SoSao >= 4) * 100.0 / Model.Count) : 100;
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">PHẢN HỒI</p>
+        <h1>Đánh giá sản phẩm</h1>
+    </div>
+</div>
+
+<div class="stats-grid people-stats">
+    <article class="stat-card"><div class="stat-icon violet">★</div><div><p>Điểm trung bình</p><strong>@avgStar.ToString("0.0")/5</strong></div></article>
+    <article class="stat-card"><div class="stat-icon blue">▤</div><div><p>Tổng đánh giá</p><strong>@Model.Count</strong></div></article>
+    <article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Chờ duyệt</p><strong>@choDuyet</strong></div></article>
+    <article class="stat-card"><div class="stat-icon green">✓</div><div><p>Tỷ lệ hài lòng</p><strong>@haiLong%</strong></div></article>
+</div>
+
+<section class="panel review-panel">
+    @if (!Model.Any())
+    {
+        <p style="padding:20px;color:#64748b">Chưa có đánh giá nào từ khách hàng trong cơ sở dữ liệu.</p>
+    }
+    @foreach (var r in Model)
+    {
+        var userName = r.NguoiDung?.HoTen ?? "Khách hàng";
+        var initial = userName.Trim().Substring(0, 1).ToUpper();
+        var stars = new string('★', Math.Clamp((int)r.SoSao, 1, 5));
+        var vnStatus = r.TrangThai switch
+        {
+            "Da_duyet" => "Đã duyệt",
+            "An" => "Đã ẩn",
+            _ => "Chờ duyệt"
+        };
+        <article class="review-row">
+            <div class="review-user">
+                <div>@initial</div>
+                <span>
+                    <strong>@userName</strong>
+                    <small>@r.ThoiGianTao.ToString("dd/MM/yyyy")</small>
+                </span>
+            </div>
+            <div class="review-content">
+                <strong>@(r.SanPham?.TenSanPham ?? "Sản phẩm")</strong>
+                <div class="stars">@stars</div>
+                <p>@(string.IsNullOrWhiteSpace(r.NoiDung) ? "Khách hàng đã đánh giá sao." : r.NoiDung)</p>
+            </div>
+            <span class="badge @(r.TrangThai == "Da_duyet" ? "badge-success" : "badge-warning")">@vnStatus</span>
+            <form method="post" action="/Management/UpdateReviewStatus" style="display:flex;gap:8px;align-items:center">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@r.Id" />
+                <select name="trangThai" class="action-select">
+                    <option value="Da_duyet" selected="@(r.TrangThai == "Da_duyet")">Duyệt hiển thị</option>
+                    <option value="Cho_duyet" selected="@(r.TrangThai == "Cho_duyet")">Chờ duyệt</option>
+                    <option value="An" selected="@(r.TrangThai == "An")">Ẩn đánh giá</option>
+                </select>
+                <button type="submit" class="icon-button">Lưu</button>
+            </form>
+        </article>
+    }
+</section>

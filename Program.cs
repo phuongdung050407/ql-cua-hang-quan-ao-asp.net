@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using ShopProject.Models;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Cấu hình Cookie Authentication
@@ -12,6 +15,10 @@ builder.Services.AddAuthentication("ShopCookie")
 
 // Add services to the container.
 builder.Services.AddControllersWithViews();
+
+// ...
+builder.Services.AddDbContext<ClothingShopContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 var app = builder.Build();
 
