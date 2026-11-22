@@ -62,6 +62,9 @@ public static class ShopDataStore
 
     public static Dictionary<string, List<ProductViewModel>> ViewedHistory { get; } = new(StringComparer.OrdinalIgnoreCase);
     public static Dictionary<string, List<ProductViewModel>> PurchaseHistory { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public static Dictionary<string, List<ProductViewModel>> WishlistHistory { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public static Dictionary<string, List<ProductViewModel>> CartHistory { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public static Dictionary<string, List<string>> SearchHistory { get; } = new(StringComparer.OrdinalIgnoreCase);
     public static List<CustomerOrderViewModel> CustomerOrders { get; } = [];
 
     public static List<ReviewViewModel> Reviews { get; } =

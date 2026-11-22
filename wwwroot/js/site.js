@@ -41,6 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             write(cartKey, cart);
             refreshCartBadges();
+            fetch(`/Shop/RecordInteraction?id=${encodeURIComponent(id)}&type=cart`, { method: 'POST' }).catch(() => {});
             toast('Đã thêm sản phẩm vào giỏ hàng');
         });
     });
@@ -53,8 +54,26 @@ document.addEventListener('DOMContentLoaded', () => {
             event.preventDefault();
             const values = read(wishlistKey);
             const index = values.indexOf(id);
-            if (index >= 0) { values.splice(index, 1); button.classList.remove('active'); button.textContent = '♡'; toast('Đã bỏ khỏi yêu thích'); }
-            else { values.push(id); button.classList.add('active'); button.textContent = '♥'; toast('Đã thêm vào yêu thích'); }
+            if (index >= 0) {
+                values.splice(index, 1);
+                button.classList.remove('active');
+                button.textContent = '♡';
+                toast('Đã bỏ khỏi yêu thích');
+                fetch(`/Shop/RecordInteraction?id=${encodeURIComponent(id)}&type=wishlist_remove`, { method: 'POST' }).catch(() => {});
+                const wishlistItem = button.closest('[data-wishlist-item]');
+                if (wishlistItem) {
+                    wishlistItem.remove();
+                    const remaining = document.querySelectorAll('[data-wishlist-item]');
+                    if (!remaining.length) window.location.reload();
+                }
+            }
+            else {
+                values.push(id);
+                button.classList.add('active');
+                button.textContent = '♥';
+                toast('Đã thêm vào yêu thích');
+                fetch(`/Shop/RecordInteraction?id=${encodeURIComponent(id)}&type=wishlist`, { method: 'POST' }).catch(() => {});
+            }
             write(wishlistKey, values);
         });
     });
@@ -83,6 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (existing) existing.quantity = Number(existing.quantity || 1) + quantity;
             else cart.push({ id, name:addButton.dataset.name, price:Number(addButton.dataset.price), image:addButton.dataset.image, category:addButton.dataset.category, quantity });
             write(cartKey, cart); refreshCartBadges();
+            fetch(`/Shop/RecordInteraction?id=${encodeURIComponent(id)}&type=cart`, { method: 'POST' }).catch(() => {});
         });
     }
 
