@@ -1,0 +1,67 @@
+@{
+    ViewData["Title"] = "Báo cáo";
+    decimal doanhThuThang = ViewBag.DoanhThuThang ?? 0M;
+    int tongDonHang = ViewBag.TongDonHang ?? 0;
+    int tongKhachHang = ViewBag.TongKhachHang ?? 0;
+    decimal giaTriDonTb = ViewBag.GiaTriDonTb ?? 0M;
+    var monthlyBars = ViewBag.MonthlyBars as List<int> ?? Enumerable.Repeat(10, 12).ToList();
+    var topProducts = ViewBag.TopProducts as List<(string Name, int Sold, int Percent)> ?? new List<(string, int, int)>();
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">PHÂN TÍCH</p>
+        <h1>Báo cáo thống kê</h1>
+    </div>
+    <div>
+        <button type="button" onclick="window.print()" class="primary-button">In / Xuất PDF</button>
+    </div>
+</div>
+
+<div class="stats-grid">
+    <article class="stat-card"><div class="stat-icon green">↗</div><div><p>Tổng doanh thu</p><strong>@doanhThuThang.ToString("N0") đ</strong><span class="positive">Dữ liệu thực tế</span></div></article>
+    <article class="stat-card"><div class="stat-icon blue">▤</div><div><p>Tổng đơn hàng</p><strong>@tongDonHang</strong><span class="positive">SQL Server</span></div></article>
+    <article class="stat-card"><div class="stat-icon violet">♙</div><div><p>Khách hàng</p><strong>@tongKhachHang</strong><span class="positive">Tài khoản</span></div></article>
+    <article class="stat-card"><div class="stat-icon amber">★</div><div><p>Giá trị đơn TB</p><strong>@giaTriDonTb.ToString("N0") đ</strong><span class="positive">Trung bình</span></div></article>
+</div>
+
+<section class="dashboard-grid">
+    <article class="panel chart-panel">
+        <div class="panel-heading">
+            <div>
+                <p class="eyebrow">DOANH THU</p>
+                <h2>Biểu đồ theo 12 tháng</h2>
+            </div>
+            <select><option>@DateTime.Now.Year</option></select>
+        </div>
+        <div class="chart-bars">
+            @for (int i = 0; i < monthlyBars.Count; i++)
+            {
+                <div class="bar-wrap">
+                    <div class="bar" style="height:@monthlyBars[i]%"></div>
+                    <small>T@(i + 1)</small>
+                </div>
+            }
+        </div>
+    </article>
+
+    <article class="panel">
+        <div class="panel-heading">
+            <div>
+                <p class="eyebrow">TOP</p>
+                <h2>Sản phẩm bán chạy</h2>
+            </div>
+        </div>
+        <div class="category-list">
+            @{
+                var barColors = new[] { "", "blue-bar", "amber-bar", "green-bar" };
+                for (int idx = 0; idx < topProducts.Count; idx++)
+                {
+                    var item = topProducts[idx];
+                    var css = barColors[idx % barColors.Length];
+                    <div><span>@item.Name</span><strong>@item.Sold đã bán</strong></div>
+                    <div class="progress"><b class="@css" style="width:@item.Percent%"></b></div>
+                }
+            }
+        </div>
+    </article>
+</section>

@@ -1,0 +1,35 @@
+@model List<ShopProject.Models.DanhMuc>
+@{
+    ViewData["Title"] = "Danh mục";
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">QUẢN LÝ</p>
+        <h1>Danh mục sản phẩm</h1>
+    </div>
+    <button type="button" class="primary-button" onclick="document.getElementById('addCatBox').style.display='block'">＋ Thêm danh mục</button>
+</div>
+
+<div id="addCatBox" class="panel" style="display:none;margin-bottom:20px;padding:18px">
+    <form method="post" action="/Management/AddCategory" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        @Html.AntiForgeryToken()
+        <input name="tenDanhMuc" placeholder="Tên danh mục mới (VD: Phụ kiện, Túi xách...)" required style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;min-width:260px" />
+        <input name="moTa" placeholder="Mô tả ngắn (không bắt buộc)" style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;min-width:260px" />
+        <button type="submit" class="primary-button">Lưu danh mục</button>
+        <button type="button" class="icon-button" onclick="document.getElementById('addCatBox').style.display='none'">Hủy</button>
+    </form>
+</div>
+
+<section class="category-grid">
+    @foreach (var c in Model)
+    {
+        <article class="category-card">
+            <b>◫</b>
+            <div>
+                <strong>@c.TenDanhMuc</strong>
+                <span>@c.SanPhams.Count sản phẩm</span>
+            </div>
+            <em>@(c.TrangThai ? "Đang hoạt động" : "Tạm ẩn")</em>
+        </article>
+    }
+</section>

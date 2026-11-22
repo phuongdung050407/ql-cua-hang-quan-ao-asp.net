@@ -1,0 +1,58 @@
+@model List<ShopProject.Models.DonHang>
+@{
+    ViewData["Title"] = "Đơn đặt hàng";
+    string MapStatus(string s) => s switch
+    {
+        "Cho_xac_nhan" => "Chờ xử lý",
+        "Da_xac_nhan" => "Đang xử lý",
+        "Dang_giao" => "Đang giao",
+        "Da_giao" => "Hoàn tất",
+        "Da_huy" => "Đã hủy",
+        _ => "Chờ xử lý"
+    };
+}
+<div class="page-heading"><div><p class="eyebrow">BÁN HÀNG</p><h1>Đơn đặt hàng</h1></div><a href="/Shop" class="primary-button">＋ Tạo đơn hàng</a></div>
+<div class="stats-grid people-stats">
+    <article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Chờ xử lý</p><strong>@(ViewBag.PendingCount ?? 0)</strong></div></article>
+    <article class="stat-card"><div class="stat-icon blue">▻</div><div><p>Đang giao</p><strong>@(ViewBag.ShippingCount ?? 0)</strong></div></article>
+    <article class="stat-card"><div class="stat-icon green">✓</div><div><p>Hoàn tất</p><strong>@(ViewBag.CompletedCount ?? 0)</strong></div></article>
+    <article class="stat-card"><div class="stat-icon violet">◆</div><div><p>Tổng đơn hàng</p><strong>@(ViewBag.TotalMonthCount ?? Model.Count)</strong></div></article>
+</div>
+<section class="panel table-panel">
+    <div class="management-toolbar">
+        <div class="filter-search">⌕ <input placeholder="Tìm mã đơn, khách hàng..."></div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Ngày đặt</th><th>Tổng tiền</th><th>Thanh toán</th><th>Trạng thái</th><th></th></tr></thead>
+            <tbody>
+                @foreach (var o in Model)
+                {
+                    var vnStatus = MapStatus(o.TrangThai);
+                    <tr>
+                        <td><strong>@o.MaDonHang</strong></td>
+                        <td>@o.TenNguoiNhan <br><small style="color:#64748b">@o.DienThoaiNhan</small></td>
+                        <td>@o.ThoiGianTao.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@o.TongThanhToan.ToString("N0") đ</td>
+                        <td>@(o.TrangThaiThanhToan == "Da_thanh_toan" ? "Đã thanh toán" : o.PhuongThucThanhToan)</td>
+                        <td>
+                            <form method="post" action="/Management/UpdateOrderStatus" style="display:flex;gap:8px;align-items:center">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@o.Id" />
+                                <select name="status" class="status-select order-status" data-current="@vnStatus">
+                                    <option value="Chờ xử lý" selected="@(vnStatus == "Chờ xử lý")">Chờ xử lý</option>
+                                    <option value="Đang xử lý" selected="@(vnStatus == "Đang xử lý")">Đang xử lý</option>
+                                    <option value="Đang giao" selected="@(vnStatus == "Đang giao")">Đang giao</option>
+                                    <option value="Hoàn tất" selected="@(vnStatus == "Hoàn tất")">Hoàn tất</option>
+                                    <option value="Đã hủy" selected="@(vnStatus == "Đã hủy")">Đã hủy</option>
+                                </select>
+                                <button type="submit" class="icon-button">Lưu</button>
+                            </form>
+                        </td>
+                        <td><a href="/Shop/Invoice/@o.MaDonHang" target="_blank" style="font-size:13px">Hóa đơn</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

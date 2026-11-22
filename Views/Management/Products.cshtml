@@ -1,0 +1,58 @@
+@model List<ProductViewModel>
+@{
+    ViewData["Title"] = "Sản phẩm";
+    var categories = ViewBag.Categories as List<ShopProject.Models.DanhMuc> ?? new();
+}
+<div class="page-heading"><div><p class="eyebrow">QUẢN LÝ</p><h1>Sản phẩm</h1></div><button class="primary-button" data-bs-toggle="modal" data-bs-target="#addModal">＋ Thêm sản phẩm</button></div>
+<div class="management-toolbar">
+    <div class="filter-search">⌕ <input placeholder="Tìm kiếm sản phẩm..."></div>
+</div>
+<section class="panel table-panel">
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Chọn</th><th>Sản phẩm</th><th>Danh mục</th><th>Giá bán</th><th>Tồn kho</th><th>Trạng thái</th><th>Thao tác</th></tr></thead>
+            <tbody>
+                @foreach (var p in Model)
+                {
+                    <tr>
+                        <td><input type="checkbox"></td>
+                        <td><div class="product-cell"><img src="@p.Image"><strong>@p.Name</strong></div></td>
+                        <td>@p.Category</td>
+                        <td>@p.Price.ToString("N0") đ</td>
+                        <td>@p.Stock</td>
+                        <td><span class="badge @(p.Status == "Đang bán" ? "badge-success" : p.Status == "Sắp hết" ? "badge-warning" : "badge-danger")">@p.Status</span></td>
+                        <td><a href="/Shop/Detail/@p.Id" target="_blank" class="icon-button" style="text-decoration:none">Xem</a></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="table-footer"><span>Hiển thị @Model.Count sản phẩm trong hệ thống</span></div>
+</section>
+<div class="modal fade" id="addModal">
+    <div class="modal-dialog modal-lg">
+        <form method="post" action="/Management/CreateProduct" class="modal-content">
+            @Html.AntiForgeryToken()
+            <div class="modal-header"><h5 class="modal-title">Thêm sản phẩm mới</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+            <div class="modal-body">
+                <div class="form-grid-admin">
+                    <label>Tên sản phẩm<input name="name" required></label>
+                    <label>
+                        Danh mục
+                        <select name="categoryId">
+                            @foreach (var c in categories)
+                            {
+                                <option value="@c.Id">@c.TenDanhMuc</option>
+                            }
+                        </select>
+                    </label>
+                    <label>Giá bán<input name="price" type="number" required></label>
+                    <label>Tồn kho ban đầu<input name="stock" type="number" value="20" required></label>
+                    <label class="full">Link ảnh (tùy chọn)<input name="imageUrl" placeholder="https://..."></label>
+                    <label class="full">Mô tả<textarea name="description"></textarea></label>
+                </div>
+            </div>
+            <div class="modal-footer"><button type="button" class="secondary-button" data-bs-dismiss="modal">Hủy</button><button type="submit" class="primary-button">Lưu sản phẩm</button></div>
+        </form>
+    </div>
+</div>
