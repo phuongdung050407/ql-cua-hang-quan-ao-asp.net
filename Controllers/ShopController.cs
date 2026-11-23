@@ -413,6 +413,44 @@ public class ShopController : Controller
         };
     }
 
+    // Đổi mật khẩu trương hợp quên mk
+    [HttpGet]
+    public IActionResult ForgotPassword()
+    {
+        return View(new ForgotPasswordViewModel());
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        var normalizedEmail = model.Email.Trim().ToLower();
+
+        // Kiểm tra tên DbSet và tên cột Email / MatKhauHash / ThoiGianCapNhat cho khớp entity NguoiDung của bạn
+        var user = await _context.NguoiDungs
+            .FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == normalizedEmail);
+
+        if (user == null)
+        {
+            ModelState.AddModelError(nameof(model.Email), "Không tìm thấy tài khoản với email này.");
+            return View(model);
+        }
+
+        var hasher = new PasswordHasher<NguoiDung>();
+        user.MatKhauHash = hasher.HashPassword(user, model.NewPassword);
+        user.ThoiGianCapNhat = DateTime.Now;
+
+        await _context.SaveChangesAsync();
+
+        TempData["SuccessMessage"] = "Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.";
+        return RedirectToAction("Login", "Shop");
+    }
+
     // 5. ĐĂNG XUẤT
     [Authorize]
     [HttpPost]
