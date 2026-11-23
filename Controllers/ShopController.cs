@@ -31,7 +31,7 @@ public class ShopController : Controller
             var c when c.Contains("quần") => "https://images.unsplash.com/photo-1542272604-787c3835535d?w=600",
             var c when c.Contains("váy") || c.Contains("đầm") => "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=600",
             _ => DefaultProductImage
-    };
+        };
     }
 
     // 1. TRANG CỬA HÀNG: Lấy sản phẩm & danh mục thật từ SQL Server
@@ -83,7 +83,7 @@ public class ShopController : Controller
         });
     }
 
-    // 2. CHI TIẾT SẢN PHẨM: Ghi lịch sử xem + Gọi thủ tục gợi ý sp_GoiYSanPham
+    // 2. CHI TIẾT SẢN PHẨM: Ghi lịch sử xem + Gọi thủ tục gợi ý sp_GoiYSanPham + Lấy đánh giá thật
     public async Task<IActionResult> Detail(int id)
     {
         var dbProduct = await _context.SanPhams
@@ -97,12 +97,12 @@ public class ShopController : Controller
         long? currentUserId = null;
         var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (long.TryParse(userIdClaim, out var parsedId))
-    {
+        {
             currentUserId = parsedId;
-    }
+        }
 
         if (currentUserId.HasValue)
-    {
+        {
             _context.LichSuXemSanPhams.Add(new LichSuXemSanPham
             {
                 SanPhamId = dbProduct.Id,
@@ -110,15 +110,15 @@ public class ShopController : Controller
                 ThoiGianXem = DateTime.Now
             });
             await _context.SaveChangesAsync();
-    }
+        }
 
         List<SanPhamGoiYDto> goiYTuSql;
         try
-    {
+        {
             goiYTuSql = await _context.SanPhamGoiYResults
                 .FromSqlInterpolated($"EXEC dbo.sp_GoiYSanPham {currentUserId}, {4}")
                 .ToListAsync();
-    }
+        }
         catch
         {
             goiYTuSql = await _context.SanPhamGoiYResults
@@ -133,7 +133,7 @@ public class ShopController : Controller
             .ToDictionaryAsync(g => g.Key, g => g.First().Url);
 
         ViewBag.Related = goiYTuSql.Select(g => new ProductViewModel
-    {
+        {
             Id = g.Id,
             Name = g.TenSanPham,
             Category = g.TenDanhMuc,
@@ -142,6 +142,13 @@ public class ShopController : Controller
             Status = "Gợi ý cho bạn",
             Image = ResolveProductImage(anhMap.TryGetValue(g.Id, out var img) ? img : null, g.TenDanhMuc)
         }).ToList();
+
+        // Lấy danh sách đánh giá đã duyệt của sản phẩm từ bảng DanhGia
+        ViewBag.Reviews = await _context.DanhGia
+            .Include(r => r.NguoiDung)
+            .Where(r => r.SanPhamId == dbProduct.Id && r.TrangThai == "Da_duyet")
+            .OrderByDescending(r => r.ThoiGianTao)
+            .ToListAsync();
 
         var productVm = new ProductViewModel
         {
@@ -155,6 +162,65 @@ public class ShopController : Controller
         };
 
         return View(productVm);
+    }
+
+    // 2B. NHẬN ĐÁNH GIÁ MỚI TỪ KHÁCH HÀNG (Khớp Trigger SQL: Chỉ đơn hàng trạng thái 'Da_giao' mới được đánh giá)
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddReview(int sanPhamId, int soSao, string noiDung)
+    {
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!long.TryParse(userIdClaim, out var userId))
+        {
+            TempData["ReviewError"] = "Vui lòng đăng nhập để gửi đánh giá sản phẩm.";
+            return RedirectToAction(nameof(Login));
+        }
+
+        // 1. Kiểm tra khách đã có đơn hàng ĐÃ GIAO ('Da_giao') chứa sản phẩm này chưa
+        var donHangHopLe = await _context.DonHangs
+            .Include(d => d.DonHangChiTiets)
+                .ThenInclude(ct => ct.BienThe)
+            .Where(d => d.NguoiDungId == userId
+                     && d.TrangThai == "Da_giao"
+                     && d.DonHangChiTiets.Any(ct => ct.BienThe.SanPhamId == sanPhamId))
+            .OrderByDescending(d => d.Id)
+            .FirstOrDefaultAsync();
+
+        if (donHangHopLe == null)
+        {
+            TempData["ReviewError"] = "Bạn chỉ có thể đánh giá sau khi đơn hàng chứa sản phẩm này đã được giao thành công!";
+            return RedirectToAction(nameof(Detail), new { id = sanPhamId });
+        }
+
+        // 2. Kiểm tra chống spam đánh giá nhiều lần cho cùng một đơn hàng
+        var daDanhGia = await _context.DanhGia
+            .AnyAsync(r => r.NguoiDungId == userId
+                        && r.SanPhamId == sanPhamId
+                        && r.DonHangId == donHangHopLe.Id);
+
+        if (daDanhGia)
+        {
+            TempData["ReviewError"] = "Bạn đã gửi đánh giá cho sản phẩm này ở đơn hàng gần nhất rồi.";
+            return RedirectToAction(nameof(Detail), new { id = sanPhamId });
+        }
+
+        // 3. Lưu đánh giá hợp lệ vào CSDL
+        var danhGia = new DanhGium
+        {
+            SanPhamId = sanPhamId,
+            NguoiDungId = userId,
+            DonHangId = donHangHopLe.Id,
+            SoSao = (byte)Math.Clamp(soSao, 1, 5),
+            NoiDung = string.IsNullOrWhiteSpace(noiDung) ? "Sản phẩm rất tốt!" : noiDung.Trim(),
+            TrangThai = "Cho_duyet",
+            ThoiGianTao = DateTime.Now
+        };
+
+        _context.DanhGia.Add(danhGia);
+        await _context.SaveChangesAsync();
+
+        TempData["ReviewSuccess"] = "Cảm ơn bạn đã đánh giá! Nhận xét của bạn đang chờ quản trị viên duyệt hiển thị.";
+        return RedirectToAction(nameof(Detail), new { id = sanPhamId });
     }
 
     // 3. ĐĂNG KÝ TÀI KHOẢN THẬT VÀO BẢNG NGUOI_DUNG
