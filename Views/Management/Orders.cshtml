@@ -11,48 +11,174 @@
         _ => "Chờ xử lý"
     };
 }
-<div class="page-heading"><div><p class="eyebrow">BÁN HÀNG</p><h1>Đơn đặt hàng</h1></div><a href="/Shop" class="primary-button">＋ Tạo đơn hàng</a></div>
-<div class="stats-grid people-stats">
-    <article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Chờ xử lý</p><strong>@(ViewBag.PendingCount ?? 0)</strong></div></article>
-    <article class="stat-card"><div class="stat-icon blue">▻</div><div><p>Đang giao</p><strong>@(ViewBag.ShippingCount ?? 0)</strong></div></article>
-    <article class="stat-card"><div class="stat-icon green">✓</div><div><p>Hoàn tất</p><strong>@(ViewBag.CompletedCount ?? 0)</strong></div></article>
-    <article class="stat-card"><div class="stat-icon violet">◆</div><div><p>Tổng đơn hàng</p><strong>@(ViewBag.TotalMonthCount ?? Model.Count)</strong></div></article>
-</div>
-<section class="panel table-panel">
-    <div class="management-toolbar">
-        <div class="filter-search">⌕ <input placeholder="Tìm mã đơn, khách hàng..."></div>
+
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">VẬN HÀNH BÁN HÀNG</p>
+        <h1>Đơn đặt hàng</h1>
     </div>
+    <a href="/Shop" class="primary-button"><i class="bi bi-plus-lg"></i> Tạo đơn tại quầy</a>
+</div>
+
+<div class="stats-grid people-stats">
+    <article class="stat-card">
+        <div class="stat-icon amber"><i class="bi bi-clock-history"></i></div>
+        <div><p>Chờ xử lý</p><strong>@(ViewBag.PendingCount ?? 0)</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon blue"><i class="bi bi-truck"></i></div>
+        <div><p>Đang giao</p><strong>@(ViewBag.ShippingCount ?? 0)</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon green"><i class="bi bi-check2-circle"></i></div>
+        <div><p>Hoàn tất</p><strong>@(ViewBag.CompletedCount ?? 0)</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon violet"><i class="bi bi-bag-check"></i></div>
+        <div><p>Tổng đơn hàng</p><strong>@(ViewBag.TotalMonthCount ?? Model.Count)</strong></div>
+    </article>
+</div>
+
+<section class="panel table-panel">
+    <div class="management-toolbar" style="padding: 18px 20px 10px;">
+        <div class="order-filter-tabs" id="orderTabs">
+            <button type="button" class="filter-tab active" data-filter="ALL">Tất cả (@Model.Count)</button>
+            <button type="button" class="filter-tab" data-filter="Chờ xử lý">Chờ xử lý</button>
+            <button type="button" class="filter-tab" data-filter="Đang xử lý">Đang xử lý</button>
+            <button type="button" class="filter-tab" data-filter="Đang giao">Đang giao</button>
+            <button type="button" class="filter-tab" data-filter="Hoàn tất">Hoàn tất</button>
+            <button type="button" class="filter-tab" data-filter="Đã hủy">Đã hủy</button>
+        </div>
+        <div class="filter-search">
+            <i class="bi bi-search text-muted"></i>
+            <input type="text" id="orderSearchInput" placeholder="Tìm mã đơn, tên hoặc SĐT khách...">
+        </div>
+    </div>
+
     <div class="table-wrap">
-        <table>
-            <thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Ngày đặt</th><th>Tổng tiền</th><th>Thanh toán</th><th>Trạng thái</th><th></th></tr></thead>
+        <table id="ordersTable">
+            <thead>
+                <tr>
+                    <th>Mã đơn</th>
+                    <th>Khách hàng</th>
+                    <th>Ngày đặt</th>
+                    <th>Tổng tiền</th>
+                    <th>Thanh toán</th>
+                    <th>Trạng thái</th>
+                    <th>Xử lý nhanh</th>
+                    <th class="text-end">Hóa đơn</th>
+                </tr>
+            </thead>
             <tbody>
                 @foreach (var o in Model)
                 {
                     var vnStatus = MapStatus(o.TrangThai);
-                    <tr>
-                        <td><strong>@o.MaDonHang</strong></td>
-                        <td>@o.TenNguoiNhan <br><small style="color:#64748b">@o.DienThoaiNhan</small></td>
-                        <td>@o.ThoiGianTao.ToString("dd/MM/yyyy HH:mm")</td>
-                        <td>@o.TongThanhToan.ToString("N0") đ</td>
-                        <td>@(o.TrangThaiThanhToan == "Da_thanh_toan" ? "Đã thanh toán" : o.PhuongThucThanhToan)</td>
+                    var badgeClass = vnStatus switch
+                    {
+                        "Chờ xử lý" => "badge-warning",
+                        "Đang xử lý" => "badge-info",
+                        "Đang giao" => "badge-primary",
+                        "Hoàn tất" => "badge-success",
+                        "Đã hủy" => "badge-danger",
+                        _ => "badge-warning"
+                    };
+                    var nextStep = vnStatus switch
+                    {
+                        "Chờ xử lý" => "Đang xử lý",
+                        "Đang xử lý" => "Đang giao",
+                        "Đang giao" => "Hoàn tất",
+                        _ => ""
+                    };
+                    var nextLabel = vnStatus switch
+                    {
+                        "Chờ xử lý" => "✓ Xác nhận đơn",
+                        "Đang xử lý" => "🚚 Giao vận chuyển",
+                        "Đang giao" => "✓ Hoàn tất đơn",
+                        _ => ""
+                    };
+
+                    <tr data-status="@vnStatus">
+                        <td><strong style="font-family: monospace; font-size: 13.5px;">@o.MaDonHang</strong></td>
                         <td>
-                            <form method="post" action="/Management/UpdateOrderStatus" style="display:flex;gap:8px;align-items:center">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="id" value="@o.Id" />
-                                <select name="status" class="status-select order-status" data-current="@vnStatus">
-                                    <option value="Chờ xử lý" selected="@(vnStatus == "Chờ xử lý")">Chờ xử lý</option>
-                                    <option value="Đang xử lý" selected="@(vnStatus == "Đang xử lý")">Đang xử lý</option>
-                                    <option value="Đang giao" selected="@(vnStatus == "Đang giao")">Đang giao</option>
-                                    <option value="Hoàn tất" selected="@(vnStatus == "Hoàn tất")">Hoàn tất</option>
-                                    <option value="Đã hủy" selected="@(vnStatus == "Đã hủy")">Đã hủy</option>
-                                </select>
-                                <button type="submit" class="icon-button">Lưu</button>
-                            </form>
+                            <strong>@o.TenNguoiNhan</strong><br>
+                            <small style="color:#6b7280">@o.DienThoaiNhan</small>
                         </td>
-                        <td><a href="/Shop/Invoice/@o.MaDonHang" target="_blank" style="font-size:13px">Hóa đơn</a></td>
+                        <td>@o.ThoiGianTao.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td><strong>@o.TongThanhToan.ToString("N0") đ</strong></td>
+                        <td>
+                            <span class="payment-pill @(o.TrangThaiThanhToan == "Da_thanh_toan" ? "paid" : "cod")">
+                                @(o.TrangThaiThanhToan == "Da_thanh_toan" ? "Đã thanh toán" : o.PhuongThucThanhToan)
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge @badgeClass">@vnStatus</span>
+                        </td>
+                        <td>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                @if (!string.IsNullOrEmpty(nextStep))
+                                {
+                                    <form method="post" action="/Management/UpdateOrderStatus" class="m-0">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@o.Id" />
+                                        <input type="hidden" name="status" value="@nextStep" />
+                                        <button type="submit" class="btn-quick-step">@nextLabel</button>
+                                    </form>
+                                }
+                                <form method="post" action="/Management/UpdateOrderStatus" style="display:flex;gap:6px;align-items:center;margin:0;">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@o.Id" />
+                                    <select name="status" class="status-select order-status">
+                                        <option value="Chờ xử lý" selected="@(vnStatus == "Chờ xử lý")">Chờ xử lý</option>
+                                        <option value="Đang xử lý" selected="@(vnStatus == "Đang xử lý")">Đang xử lý</option>
+                                        <option value="Đang giao" selected="@(vnStatus == "Đang giao")">Đang giao</option>
+                                        <option value="Hoàn tất" selected="@(vnStatus == "Hoàn tất")">Hoàn tất</option>
+                                        <option value="Đã hủy" selected="@(vnStatus == "Đã hủy")">Đã hủy</option>
+                                    </select>
+                                    <button type="submit" class="icon-button" style="padding:5px 12px;border-radius:8px;">Lưu</button>
+                                </form>
+                            </div>
+                        </td>
+                        <td class="text-end">
+                            <a href="/Shop/Invoice/@o.MaDonHang" target="_blank" class="icon-button" style="padding:5px 12px;border-radius:8px;">
+                                <i class="bi bi-printer"></i> In
+                            </a>
+                        </td>
                     </tr>
                 }
             </tbody>
         </table>
     </div>
 </section>
+
+@section Scripts {
+    <script>
+        (function () {
+            const tabs = document.querySelectorAll('#orderTabs .filter-tab');
+            const searchInput = document.getElementById('orderSearchInput');
+            const rows = document.querySelectorAll('#ordersTable tbody tr');
+            let currentStatus = 'ALL';
+
+            function filterOrders() {
+                const keyword = (searchInput?.value || '').toLowerCase().trim();
+                rows.forEach(row => {
+                    const status = row.getAttribute('data-status') || '';
+                    const text = row.innerText.toLowerCase();
+                    const matchStatus = currentStatus === 'ALL' || status === currentStatus;
+                    const matchKeyword = !keyword || text.includes(keyword);
+                    row.style.display = (matchStatus && matchKeyword) ? '' : 'none';
+                });
+            }
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentStatus = tab.getAttribute('data-filter');
+                    filterOrders();
+                });
+            });
+
+            searchInput?.addEventListener('input', filterOrders);
+        })();
+    </script>
+}

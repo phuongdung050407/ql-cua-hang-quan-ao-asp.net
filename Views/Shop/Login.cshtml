@@ -1,45 +1,57 @@
 @model LoginViewModel
-@{ Layout = null; }
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>Đăng nhập - FashionHub</title>
-    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="~/css/store.css" />
-</head>
-<body class="auth-body">
+@{
+    Layout = "_ShopLayout";
+    ViewData["Title"] = "Đăng nhập";
+}
+
 <main class="auth-layout">
     <section class="auth-image login-image">
-        <a class="store-brand" href="/Shop"><span>F</span> FashionHub</a>
-        <div><h1>Chào mừng<br/>trở lại</h1><p>Tiếp tục trải nghiệm mua sắm của bạn.</p></div>
+        <div class="brand-text text-white">FASHION<strong>HUB</strong></div>
+        <div>
+            <h1>Chào mừng<br />trở lại</h1>
+            <p>Tiếp tục trải nghiệm mua sắm và theo dõi đơn hàng của bạn.</p>
+        </div>
     </section>
+
     <section class="auth-form">
         <form method="post" asp-action="Login" asp-controller="Shop">
             @Html.AntiForgeryToken()
             <h1>Đăng nhập</h1>
-            <p>Chưa có tài khoản? <a href="/Shop/Register">Tạo tài khoản</a></p>
-            <div asp-validation-summary="ModelOnly" class="text-danger"></div>
+            <p class="text-muted mb-3">Chưa có tài khoản? <a asp-controller="Shop" asp-action="Register">Tạo tài khoản</a></p>
+
+            <div asp-validation-summary="ModelOnly" class="text-danger mb-2"></div>
             @if (TempData["RegisterSuccess"] != null)
             {
                 <div class="auth-success">@TempData["RegisterSuccess"]</div>
             }
-            <label>Email
+
+            <label>
+                Email
                 <input asp-for="Email" type="email" required placeholder="email@example.com" />
                 <span asp-validation-for="Email" class="text-danger"></span>
             </label>
-            <label>Mật khẩu
+
+            <label>
+                Mật khẩu
                 <div class="password-field">
                     <input asp-for="Password" type="password" required placeholder="Nhập mật khẩu" />
-                    <button type="button" class="toggle-password" aria-label="Hiện mật khẩu" onclick="var i=this.previousElementSibling;i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'👁':'◉';this.setAttribute('aria-label',i.type==='password'?'Hiện mật khẩu':'Ẩn mật khẩu')">👁</button>
+                    <button type="button" class="toggle-password" aria-label="Hiện mật khẩu"
+                            onclick="var i=this.previousElementSibling;i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'👁':'◉';this.setAttribute('aria-label',i.type==='password'?'Hiện mật khẩu':'Ẩn mật khẩu')">
+                        👁
+                    </button>
                 </div>
                 <span asp-validation-for="Password" class="text-danger"></span>
             </label>
-            <div class="auth-options"><label><input asp-for="RememberMe" type="checkbox" /> Ghi nhớ tôi</label><a href="#">Quên mật khẩu?</a></div>
+
+            <div class="auth-options">
+                <label class="remember-check"><input asp-for="RememberMe" type="checkbox" /> Ghi nhớ tôi</label>
+                <a href="#">Quên mật khẩu?</a>
+            </div>
+
             <button type="submit" class="checkout-button">Đăng nhập</button>
+
             <div class="demo-logins">
-                <small>Tài khoản kiểm tra</small>
+                <small>TÀI KHOẢN KIỂM TRA NHANH</small>
                 <span><strong>Admin:</strong> admin@fashion.vn / Admin123&#64;</span>
                 <span><strong>Nhân viên:</strong> nhanvien@fashion.vn / Nhanvien123&#64;</span>
                 <span><strong>Khách hàng:</strong> khachhang@gmail.com / Khachhang123&#64;</span>
@@ -47,5 +59,3 @@
         </form>
     </section>
 </main>
-</body>
-</html>

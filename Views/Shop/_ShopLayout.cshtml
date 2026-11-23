@@ -1,0 +1,134 @@
+﻿<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>@ViewData["Title"] - FashionHub Store</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="~/css/store.css" asp-append-version="true" />
+</head>
+<body class="shop-body">
+    <!-- Thanh thông báo khuyến mãi trên cùng -->
+    <div class="announcement-bar">
+        <span>MIỄN PHÍ VẬN CHUYỂN CHO ĐƠN HÀNG TỪ 500.000Đ &nbsp;|&nbsp; NHẬP MÃ <strong>NEWYEAR20</strong> GIẢM NGAY 150K</span>
+    </div>
+
+    <!-- Header chính -->
+    <header class="shop-header sticky-top">
+        <div class="container shop-nav-wrap">
+            <a class="shop-brand" asp-controller="Shop" asp-action="Index">
+                <span class="brand-badge">F</span>
+                <span class="brand-text">FASHION<strong>HUB</strong></span>
+            </a>
+
+            <nav class="shop-menu d-none d-lg-flex">
+                <a asp-controller="Shop" asp-action="Index" class="menu-item">Trang chủ</a>
+                <a asp-controller="Shop" asp-action="Index" asp-route-category="Áo" class="menu-item">Áo</a>
+                <a asp-controller="Shop" asp-action="Index" asp-route-category="Quần" class="menu-item">Quần</a>
+                <a asp-controller="Shop" asp-action="Index" asp-route-category="Váy đầm" class="menu-item">Váy đầm</a>
+                <a href="#san-pham-noi-bat" class="menu-item highlight">Bộ sưu tập mới</a>
+            </nav>
+
+            <div class="shop-actions">
+                <!-- Tìm kiếm nhanh -->
+                <form asp-controller="Shop" asp-action="Index" method="get" class="header-search d-none d-md-flex">
+                    <input type="text" name="search" value="@Context.Request.Query["search"]" placeholder="Tìm áo, quần, mã SP..." />
+                    <button type="submit" title="Tìm kiếm">⌕</button>
+                </form>
+
+                <!-- Giỏ hàng -->
+                <a asp-controller="Shop" asp-action="Cart" class="icon-btn cart-btn" title="Giỏ hàng">
+                    <span>🛍</span>
+                    <span class="cart-count" id="headerCartCount">0</span>
+                </a>
+
+                <!-- Tài khoản -->
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    <div class="user-dropdown">
+                        <span class="user-pill">👤 @User.Identity.Name</span>
+                        @if (User.IsInRole("Admin") || User.IsInRole("Employee"))
+                        {
+                            <a asp-controller="Home" asp-action="Index" class="btn-admin-link">Quản trị</a>
+                        }
+                        <form asp-controller="Shop" asp-action="Logout" method="post" class="d-inline">
+                            @Html.AntiForgeryToken()
+                            <button type="submit" class="btn-logout-link">Thoát</button>
+                        </form>
+                    </div>
+                }
+                else
+                {
+                    <a asp-controller="Shop" asp-action="Login" class="btn-login-pill">Đăng nhập</a>
+                }
+            </div>
+        </div>
+    </header>
+
+    <!-- Nội dung chính -->
+    <main>
+        @RenderBody()
+    </main>
+
+    <!-- Footer -->
+    <footer class="shop-footer">
+        <div class="container">
+            <div class="row g-4 pb-4 border-bottom border-secondary border-opacity-25">
+                <div class="col-lg-4">
+                    <div class="footer-brand mb-3">FASHION<strong>HUB</strong></div>
+                    <p class="footer-desc">Thương hiệu thời trang tối giản hiện đại. Chất liệu chọn lọc, phom dáng chuẩn mực dành cho phong cách sống năng động mỗi ngày.</p>
+                    <p class="footer-meta">Hotline: <strong>1900 6868</strong> (8:00 - 22:00)</p>
+                </div>
+                <div class="col-6 col-lg-2">
+                    <h6>DANH MỤC</h6>
+                    <ul class="footer-links">
+                        <li><a asp-controller="Shop" asp-action="Index">Tất cả sản phẩm</a></li>
+                        <li><a asp-controller="Shop" asp-action="Index" asp-route-category="Áo">Áo thời trang</a></li>
+                        <li><a asp-controller="Shop" asp-action="Index" asp-route-category="Quần">Quần thiết kế</a></li>
+                        <li><a asp-controller="Shop" asp-action="Index" asp-route-category="Váy đầm">Váy & Đầm</a></li>
+                    </ul>
+                </div>
+                <div class="col-6 col-lg-3">
+                    <h6>CHÍNH SÁCH KHÁCH HÀNG</h6>
+                    <ul class="footer-links">
+                        <li><a href="#">Hướng dẫn chọn kích cỡ</a></li>
+                        <li><a href="#">Chính sách đổi trả 7 ngày</a></li>
+                        <li><a href="#">Giao hàng & Thanh toán COD</a></li>
+                        <li><a href="#">Bảo mật thông tin khách hàng</a></li>
+                    </ul>
+                </div>
+                <div class="col-lg-3">
+                    <h6>ĐĂNG KÝ NHẬN ƯU ĐÃI</h6>
+                    <p class="footer-desc">Nhận voucher giảm 15% cho đơn hàng đầu tiên và cập nhật bộ sưu tập mới nhất.</p>
+                    <div class="newsletter-box">
+                        <input type="email" placeholder="Nhập email của bạn..." />
+                        <button type="button" onclick="alert('Cảm ơn bạn đã đăng ký nhận tin từ FashionHub!')">Gửi</button>
+                    </div>
+                </div>
+            </div>
+            <div class="pt-3 d-flex flex-wrap justify-content-between align-items-center footer-bottom">
+                <span>© 2026 FashionHub Vietnam. All rights reserved.</span>
+                <span>Thanh toán an toàn: COD • Chuyển khoản ngân hàng • Thẻ nội địa</span>
+            </div>
+        </div>
+    </footer>
+
+    <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+            // Đồng bộ số lượng giỏ hàng trên Header
+            function updateHeaderCartBadge() {
+                try {
+                    const cart = JSON.parse(localStorage.getItem('fashionhub_cart') || localStorage.getItem('cart') || '[]');
+                    const total = cart.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
+                    const badge = document.getElementById('headerCartCount');
+                    if (badge) badge.textContent = total;
+                } catch (e) { }
+            }
+            document.addEventListener('DOMContentLoaded', updateHeaderCartBadge);
+    </script>
+    @await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>

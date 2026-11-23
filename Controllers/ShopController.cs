@@ -49,8 +49,9 @@ public class ShopController : Controller
         }
 
         if (!string.IsNullOrWhiteSpace(category))
-    {
-            query = query.Where(p => p.DanhMuc.TenDanhMuc == category);
+        {
+            var cat = category.Trim();
+            query = query.Where(p => p.DanhMuc != null && p.DanhMuc.TenDanhMuc.Contains(cat));
         }
 
         var dbProducts = await query.OrderByDescending(p => p.Id).ToListAsync();

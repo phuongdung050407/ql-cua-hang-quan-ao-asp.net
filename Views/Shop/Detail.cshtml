@@ -1,8 +1,132 @@
 @model ProductViewModel
-@{ Layout = null; var related = ViewBag.Related as List<ProductViewModel> ?? new(); }
-<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>@Model.Name - FashionHub</title><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet"><link rel="stylesheet" href="~/css/store.css"></head><body>
-<header class="store-header"><a class="store-brand" href="/Shop"><span>F</span> FashionHub</a><form class="store-search"><input placeholder="Tìm kiếm sản phẩm..."></form><nav><a href="/Shop/Login">Tài khoản</a><a href="/Shop/Cart" class="cart-link">Giỏ hàng <b>2</b></a></nav></header>
-<main class="detail-page"><nav class="breadcrumb"><a href="/Shop">Trang chủ</a><span>/</span><a>@Model.Category</a><span>/</span><strong>@Model.Name</strong></nav><div class="detail-layout"><section class="detail-gallery"><div class="main-detail-image"><img src="@Model.Image" alt="@Model.Name"></div><div class="detail-thumbs"><img src="@Model.Image"><img src="@Model.Image"><img src="@Model.Image"></div></section><section class="detail-info"><span class="hero-tag">@Model.Category</span><h1>@Model.Name</h1><div class="detail-rating"><b>★★★★★</b><span>4.8 (246 đánh giá)</span></div><strong class="detail-price">@Model.Price.ToString("N0") đ</strong><p class="detail-description">Sản phẩm được may từ chất liệu cao cấp, mềm mại và thoáng mát. Thiết kế hiện đại, dễ phối đồ và phù hợp cho nhiều hoàn cảnh.</p><div class="option-group"><label>Kích thước</label><div class="size-options"><button>S</button><button class="selected">M</button><button>L</button><button>XL</button></div></div><div class="option-group"><label>Màu sắc</label><div class="color-options"><button class="color-white"></button><button class="color-beige"></button><button class="color-black"></button></div></div><div class="detail-actions"><div class="quantity detail-quantity"><button type="button">−</button><strong>1</strong><button type="button">＋</button></div><button type="button" class="checkout-button" data-add-cart="@Model.Id" data-name="@Model.Name" data-price="@((int)Model.Price)" data-image="@Model.Image" data-category="@Model.Category">Thêm vào giỏ hàng</button><button type="button" class="detail-favorite" data-wishlist="@Model.Id">♡</button></div><div class="detail-benefits"><span>✓ Giao hàng miễn phí</span><span>✓ Đổi trả trong 7 ngày</span><span>✓ Thanh toán khi nhận hàng</span></div></section></div>
-<section class="review-detail"><div class="section-heading"><div><span>ĐÁNH GIÁ</span><h2>Nhận xét từ khách hàng</h2></div><b>4.8/5</b></div><article class="detail-review"><div><b>Nguyễn Minh Anh</b><small>19/11/2026</small></div><div><span>★★★★★</span><p>Chất vải rất tốt, form đẹp và giao hàng nhanh.</p></div></article></section>
-<section class="recommend-section"><div class="section-heading"><div><span>CÓ THỂ BẠN THÍCH</span><h2>Sản phẩm liên quan</h2></div></div><div class="recommend-grid">@foreach(var p in related){<article class="product-card"><a href="/Shop/Detail/@p.Id" class="product-photo"><img src="@p.Image"></a><div class="product-info"><small>@p.Category</small><h3><a href="/Shop/Detail/@p.Id">@p.Name</a></h3><strong>@p.Price.ToString("N0") đ</strong></div></article>}</div></section></main><script src="~/js/site.js" asp-append-version="true"></script>
-</body></html>
+@{
+    Layout = "_ShopLayout";
+    ViewData["Title"] = Model.Name;
+    var related = ViewBag.Related as List<ProductViewModel> ?? new();
+}
+
+<main class="detail-page">
+    <nav class="breadcrumb">
+        <a asp-controller="Shop" asp-action="Index">Trang chủ</a>
+        <span>/</span>
+        <a asp-controller="Shop" asp-action="Index" asp-route-category="@Model.Category">@Model.Category</a>
+        <span>/</span>
+        <strong>@Model.Name</strong>
+    </nav>
+
+    <div class="detail-layout">
+        <section class="detail-gallery">
+            <div class="main-detail-image"><img src="@Model.Image" alt="@Model.Name" /></div>
+            <div class="detail-thumbs">
+                <img src="@Model.Image" alt="@Model.Name" />
+                <img src="@Model.Image" alt="@Model.Name" />
+                <img src="@Model.Image" alt="@Model.Name" />
+            </div>
+        </section>
+
+        <section class="detail-info">
+            <span class="hero-tag">@Model.Category</span>
+            <h1>@Model.Name</h1>
+            <div class="detail-rating"><b>★★★★★</b><span>4.8 (246 đánh giá)</span></div>
+            <strong class="detail-price">@Model.Price.ToString("N0") đ</strong>
+            <p class="detail-description">Sản phẩm được may từ chất liệu cao cấp, mềm mại và thoáng mát. Thiết kế hiện đại, dễ phối đồ và phù hợp cho nhiều hoàn cảnh.</p>
+
+            <div class="option-group">
+                <label>Kích thước</label>
+                <div class="size-options">
+                    <button type="button" onclick="selectSize(this)">S</button>
+                    <button type="button" class="selected" onclick="selectSize(this)">M</button>
+                    <button type="button" onclick="selectSize(this)">L</button>
+                    <button type="button" onclick="selectSize(this)">XL</button>
+                </div>
+            </div>
+
+            <div class="option-group">
+                <label>Màu sắc</label>
+                <div class="color-options">
+                    <button type="button" class="color-white" title="Trắng"></button>
+                    <button type="button" class="color-beige" title="Be"></button>
+                    <button type="button" class="color-black" title="Đen"></button>
+                </div>
+            </div>
+
+            <div class="detail-actions">
+                <div class="quantity detail-quantity">
+                    <button type="button" onclick="changeDetailQty(-1)">−</button>
+                    <strong id="detailQty">1</strong>
+                    <button type="button" onclick="changeDetailQty(1)">＋</button>
+                </div>
+                <button type="button" class="checkout-button"
+                        onclick="addDetailToCart('@Model.Id', '@Model.Name.Replace("'", "\\'")', @((int)Model.Price), '@Model.Image')">
+                    Thêm vào giỏ hàng
+                </button>
+                <button type="button" class="detail-favorite" data-wishlist="@Model.Id">♡</button>
+            </div>
+
+            <div class="detail-benefits">
+                <span>✓ Giao hàng miễn phí</span>
+                <span>✓ Đổi trả trong 7 ngày</span>
+                <span>✓ Thanh toán khi nhận hàng</span>
+            </div>
+        </section>
+    </div>
+
+    <section class="review-detail">
+        <div class="section-heading">
+            <div><span>ĐÁNH GIÁ</span><h2>Nhận xét từ khách hàng</h2></div>
+            <b>4.8/5</b>
+        </div>
+        <article class="detail-review">
+            <div><b>Nguyễn Minh Anh</b> <small class="text-muted">19/11/2026</small></div>
+            <div><span>★★★★★</span><p class="mb-0 mt-1">Chất vải rất tốt, form đẹp và giao hàng nhanh.</p></div>
+        </article>
+    </section>
+
+    <section class="recommend-section">
+        <div class="section-heading">
+            <div><span>CÓ THỂ BẠN THÍCH</span><h2>Sản phẩm liên quan</h2></div>
+        </div>
+        <div class="recommend-grid">
+            @foreach (var p in related)
+            {
+                <article class="product-card">
+                    <a asp-controller="Shop" asp-action="Detail" asp-route-id="@p.Id" class="product-photo">
+                        <img src="@p.Image" alt="@p.Name" />
+                    </a>
+                    <div class="product-info">
+                        <small class="text-muted">@p.Category</small>
+                        <a asp-controller="Shop" asp-action="Detail" asp-route-id="@p.Id" class="product-title">@p.Name</a>
+                        <strong class="product-price">@p.Price.ToString("N0") đ</strong>
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
+</main>
+
+@section Scripts {
+    <script src="~/js/site.js" asp-append-version="true"></script>
+    <script>
+        function selectSize(btn) {
+            btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('selected'));
+            btn.classList.add('selected');
+        }
+        function changeDetailQty(delta) {
+            const el = document.getElementById('detailQty');
+            const next = Math.max(1, (parseInt(el.textContent) || 1) + delta);
+            el.textContent = next;
+        }
+        function addDetailToCart(id, name, price, image) {
+            const qty = parseInt(document.getElementById('detailQty').textContent) || 1;
+            const key = 'fashionhub_cart';
+            let cart = JSON.parse(localStorage.getItem(key) || '[]');
+            const item = cart.find(x => String(x.id) === String(id));
+            if (item) item.quantity = (Number(item.quantity) || 1) + qty;
+            else cart.push({ id: String(id), name, price: Number(price), image, quantity: qty });
+            localStorage.setItem(key, JSON.stringify(cart));
+            localStorage.setItem('cart', JSON.stringify(cart));
+            if (typeof updateHeaderCartBadge === 'function') updateHeaderCartBadge();
+            alert('Đã thêm ' + qty + ' "' + name + '" vào giỏ hàng!');
+        }
+    </script>
+}

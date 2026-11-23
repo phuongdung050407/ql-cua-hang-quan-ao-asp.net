@@ -1,32 +1,217 @@
 @model StoreViewModel
-@{ Layout = null; ViewData["Title"] = "FashionHub - Trang chủ"; }
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-<meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>@ViewData["Title"]</title>
-<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="~/css/store.css" asp-append-version="true" />
-</head>
-<body>
-<header class="store-header"><a class="store-brand" href="/Shop"><span>F</span> FashionHub</a><form class="store-search" method="get" asp-action="Index" asp-controller="Shop"><input name="search" placeholder="Tìm kiếm sản phẩm..." /><button type="submit">⌕</button></form><nav>
-@if (User.Identity?.IsAuthenticated == true)
-{
-    <a href="#">@User.Identity.Name</a>
-    @if (User.IsInRole("Admin") || User.IsInRole("Employee")) { <a href="/">Bảng điều khiển</a> }
-    <form asp-action="Logout" asp-controller="Shop" method="post" style="display:inline">@Html.AntiForgeryToken()<button type="submit" class="logout-link">Đăng xuất</button></form>
+@{
+    Layout = "_ShopLayout";
+    ViewData["Title"] = "Trang chủ cửa hàng";
+    var currentCategory = Context.Request.Query["category"].ToString();
+    var currentSearch = Context.Request.Query["search"].ToString();
 }
-else
-{
-    <a href="/Shop/Login">Đăng nhập</a>
+
+<!-- 1. HERO BANNER -->
+<section class="hero-section">
+    <div class="container">
+        <div class="hero-card">
+            <div class="hero-content">
+                <span class="hero-eyebrow">NEW COLLECTION 2026</span>
+                <h1>Phong Cách Tối Giản,<br />Chất Liệu Tinh Tế.</h1>
+                <p>Khám phá những thiết kế mới nhất với phom dáng chuẩn mực, dễ phối đồ từ công sở đến dạo phố cuối tuần.</p>
+                <div class="hero-cta">
+                    <a href="#san-pham-noi-bat" class="btn-dark-solid">Mua sắm ngay →</a>
+                    <a asp-controller="Shop" asp-action="Index" class="btn-outline-light-custom">Xem tất cả (@Model.Products.Count)</a>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <img src="https://images.unsplash.com/photo-1483985988355-763728e1935b?w=900" alt="FashionHub Collection" />
+                <div class="hero-floating-tag">
+                    <strong>Giảm 150.000đ</strong>
+                    <span>Mã: NEWYEAR20</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 2. CAM KẾT DỊCH VỤ -->
+<section class="service-strip">
+    <div class="container">
+        <div class="row g-3">
+            <div class="col-6 col-md-3">
+                <div class="service-item">
+                    <span class="srv-icon">🚚</span>
+                    <div>
+                        <strong>Miễn phí vận chuyển</strong>
+                        <small>Cho đơn hàng từ 500.000đ</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="service-item">
+                    <span class="srv-icon">↺</span>
+                    <div>
+                        <strong>Đổi trả trong 7 ngày</strong>
+                        <small>Hỗ trợ đổi size tận nơi</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="service-item">
+                    <span class="srv-icon">🛡</span>
+                    <div>
+                        <strong>Thanh toán linh hoạt</strong>
+                        <small>Kiểm tra hàng trước khi trả</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="service-item">
+                    <span class="srv-icon">✦</span>
+                    <div>
+                        <strong>Chất liệu cao cấp</strong>
+                        <small>Kiểm định đường may tỉ mỉ</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- 3. DANH MỤC NỔI BẬT -->
+<section class="category-section container">
+    <div class="section-header">
+        <div>
+            <span class="sec-sub">KHÁM PHÁ THEO NHU CẦU</span>
+            <h2>Danh mục sản phẩm</h2>
+        </div>
+        @if (!string.IsNullOrEmpty(currentCategory) || !string.IsNullOrEmpty(currentSearch))
+        {
+            <a asp-controller="Shop" asp-action="Index" class="clear-filter-link">✕ Xóa bộ lọc hiện tại</a>
+        }
+    </div>
+
+    <div class="category-pills">
+        <a asp-controller="Shop" asp-action="Index"
+           class="cat-pill @(string.IsNullOrEmpty(currentCategory) ? "active" : "")">
+            <span>Tất cả sản phẩm</span>
+            <em>@Model.Categories.Sum(c => c.ProductCount)</em>
+        </a>
+
+        @foreach (var cat in Model.Categories)
+        {
+            var isActive = string.Equals(currentCategory, cat.Name, StringComparison.OrdinalIgnoreCase);
+            <a asp-controller="Shop" asp-action="Index" asp-route-category="@cat.Name"
+               class="cat-pill @(isActive ? "active" : "")">
+                <span>@cat.Name</span>
+                <em>@cat.ProductCount</em>
+            </a>
+        }
+    </div>
+</section>
+
+<!-- 4. LƯỚI SẢN PHẨM -->
+<section id="san-pham-noi-bat" class="products-section container">
+    <div class="section-header">
+        <div>
+            <span class="sec-sub">BỘ SƯU TẬP CỬA HÀNG</span>
+            <h2>
+                @if (!string.IsNullOrEmpty(currentCategory))
+                {
+                    @:Danh mục: @currentCategory
+                }
+                else if (!string.IsNullOrEmpty(currentSearch))
+                {
+                    @:Kết quả tìm kiếm cho "@currentSearch"
+                }
+                else
+                {
+                    @:Sản phẩm nổi bật
+                }
+            </h2>
+        </div>
+        <span class="result-count">Hiển thị <strong>@Model.Products.Count</strong> sản phẩm</span>
+    </div>
+
+    @if (!Model.Products.Any())
+    {
+        <div class="empty-box">
+            <h4>Không tìm thấy sản phẩm phù hợp</h4>
+            <p>Thử tìm kiếm với từ khóa khác hoặc quay lại danh sách tất cả sản phẩm.</p>
+            <a asp-controller="Shop" asp-action="Index" class="btn-dark-solid">Xem toàn bộ cửa hàng</a>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            @foreach (var item in Model.Products)
+            {
+                <div class="col-6 col-md-4 col-lg-3">
+                    <article class="product-card">
+                        <div class="product-thumb">
+                            <a asp-controller="Shop" asp-action="Detail" asp-route-id="@item.Id">
+                                <img src="@item.Image" alt="@item.Name" loading="lazy" />
+                            </a>
+                            <span class="product-tag">@item.Category</span>
+                            <div class="product-overlay">
+                                <a asp-controller="Shop" asp-action="Detail" asp-route-id="@item.Id" class="btn-quick-view">Xem chi tiết</a>
+                                <button type="button" class="btn-quick-add"
+                                        onclick="quickAddToCart('@item.Id', '@item.Name.Replace("'", "\\'")', @item.Price, '@item.Image')">
+                                    + Thêm giỏ
+                                </button>
+                            </div>
+                        </div>
+                        <div class="product-info">
+                            <a asp-controller="Shop" asp-action="Detail" asp-route-id="@item.Id" class="product-title" title="@item.Name">
+                                @item.Name
+                            </a>
+                            <div class="product-bottom">
+                                <strong class="product-price">@item.Price.ToString("N0") đ</strong>
+                                <span class="product-stock">@item.Status</span>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            }
+        </div>
+    }
+</section>
+
+<!-- 5. BANNER LOOKBOOK / ƯU ĐÃI GIỮA TRANG -->
+<section class="promo-banner-section container">
+    <div class="promo-box">
+        <div>
+            <span class="promo-badge">ƯU ĐÃI THÀNH VIÊN</span>
+            <h3>Đăng ký tài khoản ngay hôm nay để lưu lịch sử đơn hàng & nhận gợi ý phối đồ riêng</h3>
+            <p>Trải nghiệm mua sắm nhanh chóng, theo dõi trạng thái giao hàng theo thời gian thực.</p>
+        </div>
+        <div class="promo-actions">
+            <a asp-controller="Shop" asp-action="Register" class="btn-light-solid">Tạo tài khoản miễn phí</a>
+        </div>
+    </div>
+</section>
+
+@section Scripts {
+    <script>
+        function quickAddToCart(id, name, price, image) {
+            const key = 'fashionhub_cart';
+            let cart = [];
+            try {
+                cart = JSON.parse(localStorage.getItem(key) || '[]');
+            } catch (e) { cart = []; }
+
+            const existing = cart.find(x => String(x.id) === String(id));
+            if (existing) {
+                existing.quantity = (Number(existing.quantity) || 1) + 1;
+            } else {
+                cart.push({ id: String(id), name: name, price: Number(price), image: image, quantity: 1 });
+            }
+            localStorage.setItem(key, JSON.stringify(cart));
+            localStorage.setItem('cart', JSON.stringify(cart));
+            if (typeof updateHeaderCartBadge === 'function') updateHeaderCartBadge();
+
+            // Thông báo nhỏ góc màn hình
+            const toast = document.createElement('div');
+            toast.className = 'cart-toast';
+            toast.innerHTML = `✓ Đã thêm <strong>${name}</strong> vào giỏ hàng`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2500);
+        }
+    </script>
 }
-<a href="/Shop/Cart" class="cart-link">♡ Giỏ hàng <b>2</b></a></nav></header>
-<nav class="category-nav"><a href="/Shop">Tất cả</a><a href="/Shop?category=Áo sơ mi">Áo sơ mi</a><a href="/Shop?category=Áo thun">Áo thun</a><a href="/Shop?category=Quần">Quần</a><a href="/Shop?category=Váy đầm">Váy đầm</a><a href="/Shop?category=Áo khoác">Áo khoác</a></nav>
-<main>
-<section class="hero"><div><span class="hero-tag">BỘ SƯU TẬP MỚI</span><h1>Phong cách<br/>dành cho bạn</h1><p>Thời trang hiện đại, chất liệu mềm mại và tự tin trong từng khoảnh khắc.</p><a href="#products">Khám phá ngay <b>→</b></a></div><img src="https://images.unsplash.com/photo-1483985988355-763728e1935b?w=900" alt="Bộ sưu tập thời trang"></section>
-<section id="products" class="store-section"><div class="section-heading"><div><span>SẢN PHẨM</span><h2>Sản phẩm nổi bật</h2></div><a href="/Shop">Xem tất cả →</a></div>
-<div class="product-grid">@foreach (var p in Model.Products){<article class="product-card"><a href="/Shop/Detail/@p.Id" class="product-photo"><img src="@p.Image" alt="@p.Name"><span>New</span></a><button type="button" class="favorite-button" data-wishlist="@p.Id">♡</button><div class="product-info"><small>@p.Category</small><h3><a href="/Shop/Detail/@p.Id">@p.Name</a></h3><div><strong>@p.Price.ToString("N0") đ</strong><button type="button" class="add-button" data-add-cart="@p.Id" data-name="@p.Name" data-price="@((int)p.Price)" data-image="@p.Image" data-category="@p.Category">＋</button></div></div></article>}</div></section>
-<section class="recommend-section"><div class="section-heading"><div><span>DÀNH RIÊNG CHO BẠN</span><h2>Gợi ý cho bạn</h2></div></div><div class="recommend-grid">@foreach (var p in Model.Products.Take(4)){<article class="product-card"><div class="product-photo"><img src="@p.Image" alt="@p.Name"><button>♡</button></div><div class="product-info"><small>@p.Category</small><h3>@p.Name</h3><strong>@p.Price.ToString("N0") đ</strong></div></article>}</div></section>
-</main><script src="~/js/site.js" asp-append-version="true"></script>
-<footer class="store-footer"><div><h3>FashionHub</h3><p>Phong cách của bạn, thế giới của chúng tôi.</p></div><div><h4>Hỗ trợ</h4><a>Liên hệ</a><a>Chính sách đổi trả</a><a>Câu hỏi thường gặp</a></div><div><h4>Liên hệ</h4><p>hello@fashionhub.vn</p><p>0123 456 789</p></div></footer>
-</body></html>
