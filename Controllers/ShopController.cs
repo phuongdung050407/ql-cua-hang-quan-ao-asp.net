@@ -1,11 +1,12 @@
-﻿using System.Collections.Concurrent;
-using System.Security.Claims;
-using System.Text.Json;
-using Microsoft.AspNetCore.Authentication;
+﻿using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShopProject.Models;
+using System.Collections.Concurrent;
+using System.Security.Claims;
+using System.Text.Json;
 
 namespace ShopProject.Controllers;
 
@@ -234,124 +235,164 @@ public class ShopController : Controller
         if (!ModelState.IsValid) return View(model);
 
         var email = model.Email.Trim();
-        var exists = await _context.NguoiDungs.AnyAsync(u => u.Email == email || u.TenDangNhap == email);
-        if (exists)
+        var emailLower = email.ToLowerInvariant();
+
+        var emailExists = await _context.NguoiDungs
+            .AnyAsync(u => u.Email.ToLower() == emailLower || u.TenDangNhap == email);
+        if (emailExists)
         {
-            ModelState.AddModelError("Email", "Email đã được sử dụng.");
+            ModelState.AddModelError(nameof(model.Email), "Email hoặc tên đăng nhập đã được sử dụng.");
             return View(model);
         }
 
-        var roleKhachHang = await _context.VaiTros.FirstOrDefaultAsync(r => r.MaVaiTro == "KHACH_HANG");
+        var roleKhachHang = await _context.VaiTros
+            .FirstOrDefaultAsync(r => r.MaVaiTro == "KHACH_HANG");
+        if (roleKhachHang == null)
+        {
+            ModelState.AddModelError("", "Không tìm thấy vai trò KHACH_HANG trong hệ thống.");
+            return View(model);
+        }
+
+        var now = DateTime.Now;
+        var hasher = new PasswordHasher<NguoiDung>();
 
         var newUser = new NguoiDung
         {
             TenDangNhap = email,
             Email = email,
-            EmailChuan = email.ToUpperInvariant(),
-            MatKhauHash = model.Password,
             HoTen = model.FullName.Trim(),
             TrangThai = "Hoat_dong",
-            DaXacThucEmail = true,
-            ThoiGianTao = DateTime.Now,
-            ThoiGianCapNhat = DateTime.Now
+            DaXacThucEmail = false,
+            ThoiGianTao = now,
+            ThoiGianCapNhat = now
         };
+        newUser.MatKhauHash = hasher.HashPassword(newUser, model.Password);
+        newUser.VaiTros.Add(roleKhachHang);
 
-        if (roleKhachHang != null)
+        try
         {
-            newUser.VaiTros.Add(roleKhachHang);
+            _context.NguoiDungs.Add(newUser);
+            await _context.SaveChangesAsync();
+
+            _context.GioHangs.Add(new GioHang
+            {
+                NguoiDungId = newUser.Id,
+                ThoiGianTao = now
+            });
+            await _context.SaveChangesAsync();
+
+            TempData["RegisterSuccess"] = "Đăng ký thành công. Hãy đăng nhập.";
+            return RedirectToAction(nameof(Login));
         }
-
-        _context.NguoiDungs.Add(newUser);
-        await _context.SaveChangesAsync();
-
-        TempData["RegisterSuccess"] = "Đăng ký thành công. Hãy đăng nhập.";
-        return RedirectToAction(nameof(Login));
+        catch (DbUpdateException)
+        {
+            ModelState.AddModelError("", "Thông tin đăng ký bị trùng lặp hoặc không hợp lệ.");
+            return View(model);
+        }
     }
 
-    // 4. ĐĂNG NHẬP TỪ DATABASE + HỖ TRỢ 3 TÀI KHOẢN KIỂM TRA TRÊN GIAO DIỆN
+    // 4. ĐĂNG NHẬP TỪ DATABASE 
     [HttpGet]
-    public IActionResult Login() => View(new LoginViewModel());
+    public IActionResult Login(string? returnUrl = null)
+    {
+        ViewData["ReturnUrl"] = returnUrl;
+        return View(new LoginViewModel());
+    }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Login(LoginViewModel model)
+    public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
     {
-        if (!ModelState.IsValid) return View(model);
+        ViewData["ReturnUrl"] = returnUrl;
+        if (!ModelState.IsValid)
+            return View(model);
 
-        var email = model.Email.Trim();
+        var loginInput = model.Email.Trim();
+        var emailChuan = loginInput.ToLowerInvariant();
         var password = model.Password;
 
+        // Tìm người dùng theo email_chuan hoặc ten_dang_nhap, trạng thái phải là Hoat_dong
         var user = await _context.NguoiDungs
             .Include(u => u.VaiTros)
-            .FirstOrDefaultAsync(u => (u.Email == email || u.TenDangNhap == email) && u.TrangThai == "Hoat_dong");
+            .FirstOrDefaultAsync(u =>
+                (u.Email.ToLower() == emailChuan || u.TenDangNhap == loginInput)
+                && u.TrangThai == "Hoat_dong");
 
-        // Nếu đăng nhập bằng 3 tài khoản kiểm tra ghi trên màn hình Login nhưng DB chưa có thì tự tạo vào DB
-        if (user == null && (
-            (email.Equals("admin@fashion.vn", StringComparison.OrdinalIgnoreCase) && password == "Admin123@") ||
-            (email.Equals("nhanvien@fashion.vn", StringComparison.OrdinalIgnoreCase) && password == "Nhanvien123@") ||
-            (email.Equals("khachhang@gmail.com", StringComparison.OrdinalIgnoreCase) && password == "Khachhang123@")))
+        if (user == null)
         {
-            var roleCode = email.StartsWith("admin", StringComparison.OrdinalIgnoreCase) ? "QUAN_TRI"
-                         : email.StartsWith("nhanvien", StringComparison.OrdinalIgnoreCase) ? "NHAN_VIEN"
-                         : "KHACH_HANG";
-            var fullName = roleCode == "QUAN_TRI" ? "Quản trị viên"
-                         : roleCode == "NHAN_VIEN" ? "Nhân viên bán hàng"
-                         : "Khách hàng FashionHub";
-
-            var roleEntity = await _context.VaiTros.FirstOrDefaultAsync(r => r.MaVaiTro == roleCode);
-            user = new NguoiDung
-            {
-                TenDangNhap = email,
-                Email = email,
-                EmailChuan = email.ToUpperInvariant(),
-                MatKhauHash = password,
-                HoTen = fullName,
-                TrangThai = "Hoat_dong",
-                DaXacThucEmail = true,
-                ThoiGianTao = DateTime.Now,
-                ThoiGianCapNhat = DateTime.Now
-            };
-            if (roleEntity != null) user.VaiTros.Add(roleEntity);
-
-            _context.NguoiDungs.Add(user);
-            await _context.SaveChangesAsync();
-        }
-
-        bool isValidPassword = user != null && (
-            user.MatKhauHash == password ||
-            (email.Equals("admin@fashion.vn", StringComparison.OrdinalIgnoreCase) && password == "Admin123@") ||
-            (email.Equals("nhanvien@fashion.vn", StringComparison.OrdinalIgnoreCase) && password == "Nhanvien123@") ||
-            (email.Equals("khachhang@gmail.com", StringComparison.OrdinalIgnoreCase) && password == "Khachhang123@") ||
-            (email.Equals("admin@shop.vn", StringComparison.OrdinalIgnoreCase) && password == "Admin123@") ||
-            (email.Equals("nhanvien1@shop.vn", StringComparison.OrdinalIgnoreCase) && password == "Nhanvien123@") ||
-            password == "123456"
-        );
-
-        if (user == null || !isValidPassword)
-        {
-            ModelState.AddModelError("", "Email hoặc mật khẩu không đúng.");
+            ModelState.AddModelError("", "Email/tên đăng nhập hoặc mật khẩu không đúng.");
             return View(model);
         }
 
-        var maVaiTro = user.VaiTros.FirstOrDefault()?.MaVaiTro
-                       ?? (email.StartsWith("admin", StringComparison.OrdinalIgnoreCase) ? "QUAN_TRI"
-                         : email.StartsWith("nhanvien", StringComparison.OrdinalIgnoreCase) ? "NHAN_VIEN"
-                         : "KHACH_HANG");
+        var hasher = new PasswordHasher<NguoiDung>();
+        bool isValidPassword = false;
+        bool needsRehash = false;
 
+        if (!string.IsNullOrEmpty(user.MatKhauHash) && user.MatKhauHash.StartsWith("AQAAAA"))
+        {
+            var verifyResult = hasher.VerifyHashedPassword(user, user.MatKhauHash, password);
+            isValidPassword = verifyResult != PasswordVerificationResult.Failed;
+            needsRehash = verifyResult == PasswordVerificationResult.SuccessRehashNeeded;
+        }
+        else
+        {
+            // Trường hợp mật khẩu chèn tay bằng SQL chưa được hash
+            isValidPassword = user.MatKhauHash == password;
+            needsRehash = isValidPassword;
+        }
+
+        if (!isValidPassword)
+        {
+            ModelState.AddModelError("", "Email/tên đăng nhập hoặc mật khẩu không đúng.");
+            return View(model);
+        }
+
+        // Nếu tài khoản có bản ghi trong bảng nhan_vien, kiểm tra trạng thái nghỉ việc
+        var nhanVien = await _context.NhanViens
+            .AsNoTracking()
+            .FirstOrDefaultAsync(nv => nv.NguoiDungId == user.Id);
+
+        if (nhanVien != null && nhanVien.TrangThai == "Da_nghi")
+        {
+            ModelState.AddModelError("", "Tài khoản nhân viên đã nghỉ việc.");
+            return View(model);
+        }
+
+        var now = DateTime.Now;
+
+        // Cập nhật thoi_gian_cap_nhat theo quy ước SQL
+        user.ThoiGianCapNhat = now;
+
+        // Ghi nhật ký đăng nhập vào bảng nhat_ky_he_thong
+        _context.NhatKyHeThongs.Add(new NhatKyHeThong
+        {
+            NguoiDungId = user.Id,
+            HanhDong = "DANG_NHAP",
+            DoiTuong = "nguoi_dung",
+            DoiTuongId = user.Id,
+            NoiDung = $"Đăng nhập hệ thống: {user.Email}",
+            ThoiGian = now
+        });
+
+        await _context.SaveChangesAsync();
+
+        // Ánh xạ ma_vai_tro từ bảng vai_tro trong SQL sang role ứng dụng
+        var maVaiTro = user.VaiTros.FirstOrDefault()?.MaVaiTro ?? "KHACH_HANG";
         var appRole = maVaiTro switch
         {
-            "QUAN_TRI" => "Admin",
-            "NHAN_VIEN" => "Employee",
+            "ADMIN" => "Admin",
+            "NHAN_VIEN" or "QL_KHO" or "QL_SAN_PHAM" => "Employee",
             _ => "Customer"
         };
 
         var claims = new[]
         {
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new Claim(ClaimTypes.Name, user.HoTen),
-            new Claim(ClaimTypes.Email, user.Email),
-            new Claim(ClaimTypes.Role, appRole)
-        };
+        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+        new Claim(ClaimTypes.Name, user.HoTen),
+        new Claim(ClaimTypes.Email, user.Email),
+        new Claim("MaVaiTro", maVaiTro),
+        new Claim(ClaimTypes.Role, appRole)
+    };
 
         var identity = new ClaimsIdentity(claims, "ShopCookie", ClaimTypes.Name, ClaimTypes.Role);
         await HttpContext.SignInAsync("ShopCookie", new ClaimsPrincipal(identity), new AuthenticationProperties
@@ -359,6 +400,10 @@ public class ShopController : Controller
             IsPersistent = model.RememberMe,
             ExpiresUtc = model.RememberMe ? DateTimeOffset.UtcNow.AddDays(30) : DateTimeOffset.UtcNow.AddHours(8)
         });
+
+        // Kiểm tra và điều hướng theo vai trò
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+            return Redirect(returnUrl);
 
         return appRole switch
         {
@@ -368,6 +413,7 @@ public class ShopController : Controller
         };
     }
 
+    // 5. ĐĂNG XUẤT
     [Authorize]
     [HttpPost]
     [ValidateAntiForgeryToken]

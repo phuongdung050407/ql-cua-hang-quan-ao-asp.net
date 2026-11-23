@@ -6,7 +6,7 @@
         var code = u.VaiTros.FirstOrDefault()?.MaVaiTro;
         return code switch
         {
-            "QUAN_TRI" => "Quản trị viên",
+            "ADMIN" or "QUAN_TRI" => "Quản trị viên",
             "NHAN_VIEN" => "Nhân viên",
             _ => "Khách hàng"
         };
