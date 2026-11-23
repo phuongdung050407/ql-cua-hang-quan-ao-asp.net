@@ -1,65 +1,143 @@
 ﻿@model DashboardViewModel
 @{
-    ViewData["Title"] = "Tổng quan";
+    ViewData["Title"] = User.IsInRole("Admin") ? "Tổng quan" : "Không gian làm việc";
 }
 
-<div class="page-heading">
-    <div>
-        <p class="eyebrow">Bảng điều khiển</p>
-        <h1>Tổng quan cửa hàng</h1>
+@if (User.IsInRole("Admin"))
+{
+    /* ==================== GIAO DIỆN QUẢN TRỊ VIÊN (ADMIN) ==================== */
+    <div class="page-heading">
+        <div>
+            <p class="eyebrow">BẢNG ĐIỀU KHIỂN</p>
+            <h1>Tổng quan cửa hàng</h1>
+        </div>
+        <a asp-controller="Management" asp-action="Products" class="primary-button"><span>＋</span> Thêm sản phẩm</a>
     </div>
-    <button class="primary-button"><span>＋</span> Thêm sản phẩm</button>
-</div>
 
-<section class="stats-grid">
-    <article class="stat-card"><div class="stat-icon violet">↗</div><div><p>Doanh thu hôm nay</p><strong>@Model.RevenueToday.ToString("N0") đ</strong><span class="positive">+12.5% so với hôm qua</span></div></article>
-    <article class="stat-card"><div class="stat-icon blue">▣</div><div><p>Đơn hàng hôm nay</p><strong>@Model.OrdersToday</strong><span class="positive">+8 đơn mới</span></div></article>
-    <article class="stat-card"><div class="stat-icon amber">△</div><div><p>Sắp hết hàng</p><strong>@Model.LowStockCount</strong><span class="warning-text">Cần nhập kho</span></div></article>
-    <article class="stat-card"><div class="stat-icon green">♙</div><div><p>Khách hàng</p><strong>@Model.CustomerCount.ToString("N0")</strong><span class="positive">+32 tháng này</span></div></article>
-</section>
+    <section class="stats-grid">
+        <article class="stat-card"><div class="stat-icon violet">↗</div><div><p>Doanh thu hôm nay</p><strong>@Model.RevenueToday.ToString("N0") đ</strong><span class="positive">+12.5% so với hôm qua</span></div></article>
+        <article class="stat-card"><div class="stat-icon blue">▣</div><div><p>Đơn hàng hôm nay</p><strong>@Model.OrdersToday</strong><span class="positive">+8 đơn mới</span></div></article>
+        <article class="stat-card"><div class="stat-icon amber">△</div><div><p>Sắp hết hàng</p><strong>@Model.LowStockCount</strong><span class="warning-text">Cần nhập kho</span></div></article>
+        <article class="stat-card"><div class="stat-icon green">♙</div><div><p>Khách hàng</p><strong>@Model.CustomerCount.ToString("N0")</strong><span class="positive">+32 tháng này</span></div></article>
+    </section>
 
-<section class="dashboard-grid">
-    <article class="panel chart-panel">
-        <div class="panel-heading"><div><p class="eyebrow">Doanh thu</p><h2>@Model.RevenueMonth.ToString("N0") đ</h2></div><select><option>30 ngày qua</option><option>7 ngày qua</option></select></div>
-        <div class="chart-bars">
-            @{ var bars = new[] { 42, 58, 48, 72, 64, 82, 55, 76, 68, 92, 78, 86 }; }
-            @for (var i = 0; i < bars.Length; i++) { <div class="bar-wrap"><div class="bar" style="height:@bars[i]%"></div><small>@(i + 1)</small></div> }
-        </div>
-    </article>
+    <section class="dashboard-grid">
+        <article class="panel chart-panel">
+            <div class="panel-heading"><div><p class="eyebrow">Doanh thu</p><h2>@Model.RevenueMonth.ToString("N0") đ</h2></div><select><option>30 ngày qua</option><option>7 ngày qua</option></select></div>
+            <div class="chart-bars">
+                @{ var bars = new[] { 42, 58, 48, 72, 64, 82, 55, 76, 68, 92, 78, 86 }; }
+                @for (var i = 0; i < bars.Length; i++) { <div class="bar-wrap"><div class="bar" style="height:@bars[i]%"></div><small>@(i + 1)</small></div> }
+            </div>
+        </article>
 
-    <article class="panel category-panel">
-        <div class="panel-heading"><div><p class="eyebrow">Phân loại</p><h2>Danh mục bán chạy</h2></div></div>
-        <div class="category-list">
-            <div><span><i class="dot violet-dot"></i>Áo</span><strong>42%</strong></div>
-            <div class="progress"><b style="width:42%"></b></div>
-            <div><span><i class="dot blue-dot"></i>Quần</span><strong>28%</strong></div>
-            <div class="progress"><b class="blue-bar" style="width:28%"></b></div>
-            <div><span><i class="dot amber-dot"></i>Váy đầm</span><strong>18%</strong></div>
-            <div class="progress"><b class="amber-bar" style="width:18%"></b></div>
-            <div><span><i class="dot green-dot"></i>Phụ kiện</span><strong>12%</strong></div>
-            <div class="progress"><b class="green-bar" style="width:12%"></b></div>
-        </div>
-    </article>
-</section>
+        <article class="panel category-panel">
+            <div class="panel-heading"><div><p class="eyebrow">Phân loại</p><h2>Danh mục bán chạy</h2></div></div>
+            <div class="category-list">
+                <div><span><i class="dot violet-dot"></i>Áo</span><strong>42%</strong></div>
+                <div class="progress"><b style="width:42%"></b></div>
+                <div><span><i class="dot blue-dot"></i>Quần</span><strong>28%</strong></div>
+                <div class="progress"><b class="blue-bar" style="width:28%"></b></div>
+                <div><span><i class="dot amber-dot"></i>Váy đầm</span><strong>18%</strong></div>
+                <div class="progress"><b class="amber-bar" style="width:18%"></b></div>
+                <div><span><i class="dot green-dot"></i>Phụ kiện</span><strong>12%</strong></div>
+                <div class="progress"><b class="green-bar" style="width:12%"></b></div>
+            </div>
+        </article>
+    </section>
 
-<section class="dashboard-grid lower-grid">
-    <article class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Sản phẩm</p><h2>Sản phẩm gần đây</h2></div><a href="#">Xem tất cả</a></div>
-        <div class="table-wrap"><table><thead><tr><th>Sản phẩm</th><th>Danh mục</th><th>Giá</th><th>Tồn kho</th><th>Trạng thái</th></tr></thead><tbody>
-        @foreach (var product in Model.Products)
-        {
-            <tr><td><div class="product-cell"><img src="@product.Image" alt="@product.Name"><strong>@product.Name</strong></div></td><td>@product.Category</td><td>@product.Price.ToString("N0") đ</td><td>@product.Stock</td><td><span class="badge @(product.Status == "Sắp hết" ? "badge-warning" : product.Status == "Hết hàng" ? "badge-danger" : "badge-success")">@product.Status</span></td></tr>
-        }
-        </tbody></table></div>
-    </article>
-
-    <article class="panel">
-        <div class="panel-heading"><div><p class="eyebrow">Đơn hàng</p><h2>Đơn mới nhất</h2></div><a href="#">Xem tất cả</a></div>
-        <div class="order-list">
-            @foreach (var order in Model.RecentOrders)
+    <section class="dashboard-grid lower-grid">
+        <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">Sản phẩm</p><h2>Sản phẩm gần đây</h2></div><a asp-controller="Management" asp-action="Products">Xem tất cả</a></div>
+            <div class="table-wrap"><table><thead><tr><th>Sản phẩm</th><th>Danh mục</th><th>Giá</th><th>Tồn kho</th><th>Trạng thái</th></tr></thead><tbody>
+            @foreach (var product in Model.Products)
             {
-                <div class="order-row"><div class="order-code"><strong>@order.Code</strong><span>@order.Customer</span></div><div class="order-meta"><strong>@order.Total.ToString("N0") đ</strong><span class="status-dot">@order.Status</span></div></div>
+                <tr><td><div class="product-cell"><img src="@product.Image" alt="@product.Name"><strong>@product.Name</strong></div></td><td>@product.Category</td><td>@product.Price.ToString("N0") đ</td><td>@product.Stock</td><td><span class="badge @(product.Status == "Sắp hết" ? "badge-warning" : product.Status == "Hết hàng" ? "badge-danger" : "badge-success")">@product.Status</span></td></tr>
             }
+            </tbody></table></div>
+        </article>
+
+        <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">Đơn hàng</p><h2>Đơn mới nhất</h2></div><a asp-controller="Management" asp-action="Orders">Xem tất cả</a></div>
+            <div class="order-list">
+                @foreach (var order in Model.RecentOrders)
+                {
+                    <div class="order-row"><div class="order-code"><strong>@order.Code</strong><span>@order.Customer</span></div><div class="order-meta"><strong>@order.Total.ToString("N0") đ</strong><span class="status-dot">@order.Status</span></div></div>
+                }
+            </div>
+        </article>
+    </section>
+}
+else
+{
+    /* ==================== GIAO DIỆN NHÂN VIÊN BÁN HÀNG (STAFF) ==================== */
+    <div class="page-heading">
+        <div>
+            <p class="eyebrow">CA LÀM VIỆC HÔM NAY</p>
+            <h1>Xin chào, @(User.Identity?.Name ?? "Nhân viên bán hàng")</h1>
         </div>
-    </article>
-</section>
+        <a href="/Shop" class="primary-button"><i class="bi bi-plus-lg"></i> Tạo đơn tại quầy</a>
+    </div>
+
+    <section class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
+        <article class="stat-card">
+            <div class="stat-icon amber"><i class="bi bi-bag-plus"></i></div>
+            <div><p>Đơn hàng hôm nay</p><strong>@Model.OrdersToday</strong><span class="positive">Cần kiểm tra & xác nhận</span></div>
+        </article>
+        <article class="stat-card">
+            <div class="stat-icon blue"><i class="bi bi-box-seam"></i></div>
+            <div><p>Sản phẩm sắp hết hàng</p><strong>@Model.LowStockCount</strong><span class="warning-text">Báo kho bổ sung</span></div>
+        </article>
+        <article class="stat-card">
+            <div class="stat-icon green"><i class="bi bi-tags"></i></div>
+            <div><p>Mẫu đang trưng bày</p><strong>@Model.Products.Count</strong><span class="positive">Sẵn sàng tư vấn khách</span></div>
+        </article>
+    </section>
+
+    <section class="dashboard-grid">
+        <article class="panel">
+            <div class="panel-heading">
+                <div><p class="eyebrow">ƯU TIÊN XỬ LÝ</p><h2>Đơn hàng cần chốt & giao</h2></div>
+                <a asp-controller="Management" asp-action="Orders">Mở bảng xử lý đơn →</a>
+            </div>
+            <div class="order-list">
+                @foreach (var order in Model.RecentOrders)
+                {
+                    <div class="order-row">
+                        <div class="order-code">
+                            <strong>@order.Code</strong>
+                            <span>Khách hàng: @order.Customer</span>
+                        </div>
+                        <div class="order-meta">
+                            <strong>@order.Total.ToString("N0") đ</strong>
+                            <span class="status-dot">@order.Status</span>
+                        </div>
+                    </div>
+                }
+            </div>
+        </article>
+
+        <article class="panel">
+            <div class="panel-heading">
+                <div><p class="eyebrow">TRA CỨU NHANH</p><h2>Tồn kho tại cửa hàng</h2></div>
+                <a asp-controller="Management" asp-action="Inventory">Xem kho →</a>
+            </div>
+            <div class="order-list">
+                @foreach (var product in Model.Products.Take(5))
+                {
+                    <div class="order-row">
+                        <div class="product-cell" style="min-width:0;">
+                            <img src="@product.Image" alt="@product.Name" style="width:40px!important;height:48px!important;">
+                            <div>
+                                <strong style="font-size:13.5px;display:block;">@product.Name</strong>
+                                <span style="font-size:12px;color:#6b7280;">@product.Price.ToString("N0") đ</span>
+                            </div>
+                        </div>
+                        <span class="badge @(product.Status == "Sắp hết" ? "badge-warning" : product.Status == "Hết hàng" ? "badge-danger" : "badge-success")">
+                            Còn @product.Stock
+                        </span>
+                    </div>
+                }
+            </div>
+        </article>
+    </section>
+}

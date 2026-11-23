@@ -19,25 +19,35 @@ public class HomeController : Controller
     public async Task<IActionResult> Index()
     {
         var today = DateTime.Today;
-        var firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
+        var isAdmin = User.IsInRole("Admin");
 
-        var validOrders = _context.DonHangs.Where(d => d.TrangThai != "Da_huy");
+        decimal revenueToday = 0;
+        decimal revenueMonth = 0;
+        int customerCount = 0;
 
-        var revenueToday = await validOrders
-            .Where(d => d.ThoiGianTao >= today)
-            .SumAsync(d => (decimal?)d.TongThanhToan) ?? 0;
+        // Chỉ truy vấn dữ liệu doanh thu & khách hàng khi tài khoản là Admin
+        if (isAdmin)
+        {
+            var firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
+            var validOrders = _context.DonHangs.Where(d => d.TrangThai != "Da_huy");
 
-        var revenueMonth = await validOrders
-            .Where(d => d.ThoiGianTao >= firstDayOfMonth)
-            .SumAsync(d => (decimal?)d.TongThanhToan) ?? 0;
+            revenueToday = await validOrders
+                .Where(d => d.ThoiGianTao >= today)
+                .SumAsync(d => (decimal?)d.TongThanhToan) ?? 0;
 
+            revenueMonth = await validOrders
+                .Where(d => d.ThoiGianTao >= firstDayOfMonth)
+                .SumAsync(d => (decimal?)d.TongThanhToan) ?? 0;
+
+            customerCount = await _context.NguoiDungs.CountAsync();
+        }
+
+        // Dữ liệu vận hành chung cho cả Admin và Nhân viên
         var ordersToday = await _context.DonHangs
             .CountAsync(d => d.ThoiGianTao >= today);
 
         var lowStockCount = await _context.TonKhos
             .CountAsync(t => t.SoLuongTon <= 5);
-
-        var customerCount = await _context.NguoiDungs.CountAsync();
 
         var dbProducts = await _context.SanPhams
             .Include(p => p.DanhMuc)
@@ -53,9 +63,9 @@ public class HomeController : Controller
             var status = stock == 0 ? "Hết hàng" : stock <= 5 ? "Sắp hết" : "Đang bán";
             var img = p.SanPhamAnhs.FirstOrDefault()?.Url;
             if (string.IsNullOrWhiteSpace(img) || !img.StartsWith("http", StringComparison.OrdinalIgnoreCase))
-    {
+            {
                 img = "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=300";
-    }
+            }
 
             return new ProductViewModel
             {
@@ -75,7 +85,7 @@ public class HomeController : Controller
             .ToListAsync();
 
         var recentOrders = dbOrders.Select(o => new OrderViewModel
-    {
+        {
             Code = o.MaDonHang,
             Customer = o.TenNguoiNhan,
             Date = o.ThoiGianTao.ToString("dd/MM/yyyy"),

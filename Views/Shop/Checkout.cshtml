@@ -1,7 +1,72 @@
 @model List<ProductViewModel>
-@{ Layout = null; }
-<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Thanh toán</title><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="~/css/store.css" /></head><body>
-<header class="store-header"><a class="store-brand" href="/Shop"><span>F</span> FashionHub</a><nav><a href="/Shop/Cart">← Quay lại giỏ hàng</a></nav></header>
-<main class="checkout-page"><div class="checkout-title"><span class="eyebrow">THANH TOÁN AN TOÀN</span><h1>Thông tin đặt hàng</h1></div><div class="checkout-layout"><form class="checkout-form" id="checkout-form"><h2>Thông tin giao hàng</h2><div class="form-grid"><label>Họ và tên<input name="fullName" required placeholder="Nguyễn Văn An"></label><label>Số điện thoại<input name="phone" required placeholder="0912 345 678"></label><label class="full">Email<input name="email" type="email" required placeholder="email@example.com"></label><label class="full">Địa chỉ<input name="address" required placeholder="Số nhà, tên đường"></label><label>Tỉnh / Thành phố<select name="province"><option>TP. Hồ Chí Minh</option><option>Hà Nội</option></select></label><label>Quận / Huyện<select name="district"><option>Quận 1</option><option>Quận 3</option></select></label><label class="full">Ghi chú<textarea name="note" placeholder="Ghi chú cho đơn hàng"></textarea></label></div><h2>Phương thức thanh toán</h2><label class="payment-option selected"><input type="radio" name="payment" value="COD" checked><b>Thanh toán khi nhận hàng (COD)</b></label><label class="payment-option"><input type="radio" name="payment" value="Bank"><b>Chuyển khoản ngân hàng</b></label></form>
-<aside class="order-summary"><h2>Đơn hàng</h2>@foreach(var p in Model){<div class="summary-product"><img src="@p.Image"><div><strong>@p.Name</strong><small>Số lượng: 1</small></div><b>@p.Price.ToString("N0") đ</b></div>}<div class="total"><span>Tổng thanh toán</span><strong>1.130.000 đ</strong></div><form method="post" action="/Shop/PlaceOrder" id="place-order-form">@Html.AntiForgeryToken()<button type="submit" class="checkout-button" id="place-order-button">Đặt hàng</button></form></aside></div></main><script src="~/js/site.js" asp-append-version="true"></script>
-</body></html>
+@{
+    Layout = "_ShopLayout";
+    ViewData["Title"] = "Thanh toán";
+}
+
+<main class="checkout-page">
+    <div class="checkout-title">
+        <span class="eyebrow">THANH TOÁN AN TOÀN</span>
+        <h1>Thông tin đặt hàng</h1>
+    </div>
+
+    <div class="checkout-layout">
+        <form class="checkout-form" id="checkout-form">
+            <h2>Thông tin giao hàng</h2>
+            <div class="form-grid">
+                <label>Họ và tên<input name="fullName" required placeholder="Nguyễn Văn An" /></label>
+                <label>Số điện thoại<input name="phone" required placeholder="0912 345 678" /></label>
+                <label class="full">Email<input name="email" type="email" required placeholder="email@example.com" /></label>
+                <label class="full">Địa chỉ<input name="address" required placeholder="Số nhà, tên đường" /></label>
+                <label>
+                    Tỉnh / Thành phố
+                    <select name="province">
+                        <option>TP. Hồ Chí Minh</option>
+                        <option>Hà Nội</option>
+                        <option>An Giang</option>
+                    </select>
+                </label>
+                <label>
+                    Quận / Huyện
+                    <select name="district">
+                        <option>Quận 1</option>
+                        <option>Quận 3</option>
+                        <option>TP. Long Xuyên</option>
+                    </select>
+                </label>
+                <label class="full">Ghi chú<textarea name="note" placeholder="Ghi chú cho đơn hàng"></textarea></label>
+            </div>
+
+            <h2>Phương thức thanh toán</h2>
+            <label class="payment-option selected">
+                <input type="radio" name="payment" value="COD" checked />
+                <b>Thanh toán khi nhận hàng (COD)</b>
+            </label>
+            <label class="payment-option">
+                <input type="radio" name="payment" value="Bank" />
+                <b>Chuyển khoản ngân hàng</b>
+            </label>
+        </form>
+
+        <aside class="order-summary">
+            <h2>Đơn hàng</h2>
+            @foreach (var p in Model)
+            {
+                <div class="summary-product">
+                    <img src="@p.Image" alt="@p.Name" />
+                    <div><strong>@p.Name</strong><small>Số lượng: 1</small></div>
+                    <b>@p.Price.ToString("N0") đ</b>
+                </div>
+            }
+            <div class="total"><span>Tổng thanh toán</span><strong>@Model.Sum(x => x.Price).ToString("N0") đ</strong></div>
+            <form method="post" asp-controller="Shop" asp-action="PlaceOrder" id="place-order-form">
+                @Html.AntiForgeryToken()
+                <button type="submit" class="checkout-button" id="place-order-button">Đặt hàng</button>
+            </form>
+        </aside>
+    </div>
+</main>
+
+@section Scripts {
+    <script src="~/js/site.js" asp-append-version="true"></script>
+}
