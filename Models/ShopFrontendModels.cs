@@ -54,4 +54,21 @@ public class StoreViewModel
 {
     public List<ProductViewModel> Products { get; set; } = [];
     public List<CategoryViewModel> Categories { get; set; } = [];
+    public List<ProductViewModel> RecommendedProducts { get; set; } = [];
+}
+
+public class CartItemViewModel
+{
+    public long CartItemId { get; set; }
+    public int ProductId { get; set; }
+    public long VariantId { get; set; }
+    public string Name { get; set; } = "";
+    public string Category { get; set; } = "";
+    public string Size { get; set; } = "";
+    public string Color { get; set; } = "";
+    public decimal Price { get; set; }
+    public int Quantity { get; set; }
+    public int MaxStock { get; set; }
+    public string Image { get; set; } = "";
+    public decimal SubTotal => Price * Quantity;
 }

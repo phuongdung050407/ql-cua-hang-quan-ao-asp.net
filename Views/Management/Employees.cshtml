@@ -1,4 +1,97 @@
-@{ ViewData["Title"]="Nhân viên"; }
-<div class="page-heading"><div><p class="eyebrow">QUẢN LÝ</p><h1>Nhân viên</h1></div><button class="primary-button">＋ Thêm nhân viên</button></div>
-<div class="stats-grid people-stats"><article class="stat-card"><div class="stat-icon violet">♧</div><div><p>Tổng nhân viên</p><strong>18</strong></div></article><article class="stat-card"><div class="stat-icon green">✓</div><div><p>Đang làm việc</p><strong>15</strong></div></article><article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Nghỉ phép</p><strong>2</strong></div></article><article class="stat-card"><div class="stat-icon blue">◆</div><div><p>Quản lý</p><strong>3</strong></div></article></div>
-<section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Nhân viên</th><th>Chức vụ</th><th>Điện thoại</th><th>Email</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>@foreach(var e in new[]{("Trần Minh","Quản trị viên","0912 345 678","minh@fashion.vn","Hoạt động"),("Nguyễn Lan","Nhân viên bán hàng","0988 111 222","lan@fashion.vn","Hoạt động"),("Lê Tuấn","Kế toán","0977 333 444","tuan@fashion.vn","Nghỉ phép"),("Phạm Hoa","Quản kho","0966 555 777","hoa@fashion.vn","Hoạt động")}){<tr><td><div class="person-cell"><div>@e.Item1.Substring(0,1)</div><strong>@e.Item1</strong></div></td><td>@e.Item2</td><td>@e.Item3</td><td>@e.Item4</td><td><select class="status-select" data-current="@e.Item5"><option>Hoạt động</option><option>Nghỉ phép</option><option>Tạm khóa</option></select></td><td><button type="button" class="icon-button status-save">Lưu</button></td></tr>}</tbody></table></div></section>
+@model List<PersonViewModel>
+@{
+    ViewData["Title"] = "Nhân viên";
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">QUẢN LÝ</p>
+        <h1>Nhân viên</h1>
+    </div>
+    <button type="button" class="primary-button" onclick="document.getElementById('add-emp-box').toggleAttribute('hidden')">＋ Thêm nhân viên</button>
+</div>
+
+@if (TempData["EmployeeSuccess"] != null)
+{
+    <p style="color:#15803d;margin-bottom:12px">@TempData["EmployeeSuccess"]</p>
+}
+@if (TempData["EmployeeError"] != null)
+{
+    <p style="color:#b91c1c;margin-bottom:12px">@TempData["EmployeeError"]</p>
+}
+
+<section id="add-emp-box" class="panel" hidden style="margin-bottom:20px;padding:18px">
+    <h3 style="margin-bottom:12px">Thêm tài khoản nhân viên mới</h3>
+    <form method="post" asp-action="CreateEmployee" asp-controller="Management" class="form-grid-admin">
+        @Html.AntiForgeryToken()
+        <label>Họ và tên<input name="hoTen" required placeholder="Nguyễn Lan" /></label>
+        <label>Email đăng nhập<input type="email" name="email" required placeholder="nhanvien@fashion.vn" /></label>
+        <label>Số điện thoại<input name="phone" placeholder="0988111222" /></label>
+        <label>Mật khẩu khởi tạo<input type="password" name="password" minlength="8" required placeholder="Tối thiểu 8 ký tự" /></label>
+        <label>Chức vụ<input name="chucVu" value="Nhân viên bán hàng" required /></label>
+        <label>Lương cơ bản<input type="number" name="luong" value="8000000" min="0" step="500000" /></label>
+        <div class="full"><button type="submit" class="primary-button">Lưu nhân viên</button></div>
+    </form>
+</section>
+
+<div class="stats-grid people-stats">
+    <article class="stat-card">
+        <div class="stat-icon violet">♧</div>
+        <div><p>Tổng nhân viên</p><strong>@ViewBag.TotalEmployees</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon green">✓</div>
+        <div><p>Đang làm việc</p><strong>@ViewBag.WorkingCount</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon amber">◷</div>
+        <div><p>Tạm nghỉ</p><strong>@ViewBag.LeaveCount</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon blue">◆</div>
+        <div><p>Quản lý</p><strong>@ViewBag.ManagerCount</strong></div>
+    </article>
+</div>
+
+<section class="panel table-panel">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Nhân viên</th>
+                    <th>Chức vụ & Mã NV</th>
+                    <th>Điện thoại</th>
+                    <th>Email</th>
+                    <th>Trạng thái</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in Model)
+                {
+                    <tr>
+                        <td>
+                            <div class="person-cell">
+                                <div>@(string.IsNullOrEmpty(e.Name) ? "N" : e.Name.Substring(0, 1).ToUpper())</div>
+                                <strong>@e.Name</strong>
+                            </div>
+                        </td>
+                        <td>@e.Role</td>
+                        <td>@e.Phone</td>
+                        <td>@e.Email</td>
+                        <td>
+                            <form method="post" asp-action="UpdateEmployeeStatus" asp-controller="Management" style="display:flex;gap:6px;align-items:center">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@e.Id" />
+                                <select name="status" class="status-select">
+                                    <option value="Dang_lam" selected="@(e.Status == "Hoạt động")">Đang làm</option>
+                                    <option value="Tam_nghi" selected="@(e.Status == "Nghỉ phép")">Tạm nghỉ</option>
+                                    <option value="Da_nghi" selected="@(e.Status == "Tạm khóa")">Đã nghỉ</option>
+                                </select>
+                                <button type="submit" class="icon-button">Lưu</button>
+                            </form>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

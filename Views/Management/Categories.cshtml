@@ -1,3 +1,325 @@
-@{ ViewData["Title"]="Danh mục"; }
-<div class="page-heading"><div><p class="eyebrow">QUẢN LÝ</p><h1>Danh mục sản phẩm</h1></div><button class="primary-button">＋ Thêm danh mục</button></div>
-<section class="category-grid"><article class="category-card"><b>◫</b><div><strong>Áo sơ mi</strong><span>18 sản phẩm</span></div><em>Đang hoạt động</em></article><article class="category-card"><b>◫</b><div><strong>Áo thun</strong><span>24 sản phẩm</span></div><em>Đang hoạt động</em></article><article class="category-card"><b>◫</b><div><strong>Quần</strong><span>16 sản phẩm</span></div><em>Đang hoạt động</em></article><article class="category-card"><b>◫</b><div><strong>Váy đầm</strong><span>21 sản phẩm</span></div><em>Đang hoạt động</em></article><article class="category-card"><b>◫</b><div><strong>Áo khoác</strong><span>9 sản phẩm</span></div><em>Đang hoạt động</em></article><article class="category-card"><b>◫</b><div><strong>Phụ kiện</strong><span>12 sản phẩm</span></div><em>Đang hoạt động</em></article></section>
+@model List<CategoryViewModel>
+@{
+    ViewData["Title"] = "Danh mục";
+    var metaMap = ViewBag.CategoryMeta as System.Collections.IDictionary;
+    var iconOptions = new[]
+    {
+        ("👕", "Áo thun"),
+        ("👔", "Áo sơ mi"),
+        ("🧥", "Áo khoác"),
+        ("👖", "Quần"),
+        ("👗", "Váy đầm"),
+        ("👟", "Giày dép"),
+        ("👜", "Túi xách"),
+        ("🧢", "Mũ / Nón"),
+        ("🕶", "Phụ kiện"),
+        ("🧦", "Đồ lót / Tất"),
+        ("◫", "Khác")
+    };
+}
+
+<style>
+    .icon-picker {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 6px;
+    }
+    .icon-opt {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 11px;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #334155;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .icon-opt:hover {
+        border-color: #cbd5e1;
+        background: #f8fafc;
+    }
+    .icon-opt.selected {
+        border-color: #4f46e5;
+        background: #eef2ff;
+        color: #3730a3;
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
+    }
+    .icon-opt .ic-glyph {
+        font-size: 16px;
+        line-height: 1;
+    }
+    .cat-name-cell {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .cat-icon-box {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: #eef2ff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 19px;
+        flex-shrink: 0;
+    }
+    .cat-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: nowrap;
+    }
+    .cat-actions form {
+        margin: 0;
+        display: inline-flex;
+    }
+    .act-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 30px;
+        padding: 0 11px;
+        border-radius: 7px;
+        font-size: 12.5px;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
+        color: #334155;
+    }
+    .act-btn:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #0f172a;
+    }
+    .act-disable {
+        color: #b45309;
+        border-color: #fde68a;
+        background: #fffbeb;
+    }
+    .act-disable:hover {
+        background: #fef3c7;
+        border-color: #fcd34d;
+    }
+    .act-enable {
+        color: #15803d;
+        border-color: #bbf7d0;
+        background: #f0fdf4;
+    }
+    .act-enable:hover {
+        background: #dcfce7;
+        border-color: #86efac;
+    }
+    .act-delete {
+        color: #dc2626;
+        border-color: #fecaca;
+        background: #fef2f2;
+    }
+    .act-delete:hover {
+        background: #fee2e2;
+        border-color: #fca5a5;
+        color: #b91c1c;
+    }
+</style>
+
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">QUẢN LÝ</p>
+        <h1>Danh mục sản phẩm</h1>
+    </div>
+    <button type="button" class="primary-button" onclick="openCatBox('add-cat-box')">＋ Thêm danh mục</button>
+</div>
+
+@if (TempData["CategorySuccess"] != null)
+{
+    <p style="color:#15803d;margin-bottom:12px">@TempData["CategorySuccess"]</p>
+}
+@if (TempData["CategoryError"] != null)
+{
+    <p style="color:#b91c1c;margin-bottom:12px">@TempData["CategoryError"]</p>
+}
+
+<!-- 1. KHUNG THÊM DANH MỤC MỚI -->
+<section id="add-cat-box" class="panel" hidden style="margin-bottom:20px;padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Thêm danh mục mới</h3>
+        <button type="button" class="act-btn" onclick="closeAllCatBoxes()">✕</button>
+    </div>
+    <form method="post" asp-action="CreateCategory" asp-controller="Management" class="form-grid-admin">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="icon" id="add-cat-icon" value="👕" />
+        <label>Tên danh mục<input name="tenDanhMuc" required placeholder="Ví dụ: Giày thể thao, Phụ kiện..." /></label>
+        <label>Mô tả<input name="moTa" placeholder="Mô tả ngắn về nhóm sản phẩm..." /></label>
+        <div style="grid-column: 1 / -1;">
+            <label>Chọn biểu tượng (Icon)</label>
+            <div class="icon-picker" data-target="add-cat-icon">
+                @foreach (var opt in iconOptions)
+                {
+                    <button type="button"
+                            class="icon-opt @(opt.Item1 == "👕" ? "selected" : "")"
+                            data-icon="@opt.Item1"
+                            onclick="selectCatIcon(this)">
+                        <span class="ic-glyph">@opt.Item1</span>
+                        <span>@opt.Item2</span>
+                    </button>
+                }
+            </div>
+        </div>
+        <div style="grid-column: 1 / -1; margin-top: 4px;">
+            <button type="submit" class="primary-button">Lưu danh mục</button>
+        </div>
+    </form>
+</section>
+
+<!-- 2. KHUNG SỬA DANH MỤC -->
+<section id="edit-cat-box" class="panel" hidden style="margin-bottom:20px;padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Chỉnh sửa danh mục</h3>
+        <button type="button" class="act-btn" onclick="closeAllCatBoxes()">✕</button>
+    </div>
+    <form method="post" asp-action="EditCategory" asp-controller="Management" class="form-grid-admin">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="id" id="edit-cat-id" />
+        <input type="hidden" name="icon" id="edit-cat-icon" value="👕" />
+        <label>Tên danh mục<input name="tenDanhMuc" id="edit-cat-name" required /></label>
+        <label>Mô tả<input name="moTa" id="edit-cat-desc" placeholder="Mô tả ngắn..." /></label>
+        <div style="grid-column: 1 / -1;">
+            <label>Chọn biểu tượng (Icon)</label>
+            <div class="icon-picker" id="edit-icon-picker" data-target="edit-cat-icon">
+                @foreach (var opt in iconOptions)
+                {
+                    <button type="button"
+                            class="icon-opt"
+                            data-icon="@opt.Item1"
+                            onclick="selectCatIcon(this)">
+                        <span class="ic-glyph">@opt.Item1</span>
+                        <span>@opt.Item2</span>
+                    </button>
+                }
+            </div>
+        </div>
+        <div style="grid-column: 1 / -1; margin-top: 4px;">
+            <button type="submit" class="primary-button">Cập nhật danh mục</button>
+        </div>
+    </form>
+</section>
+
+<!-- 3. BẢNG DANH SÁCH DANH MỤC (MỖI DANH MỤC 1 HÀNG NHƯ SẢN PHẨM) -->
+<section class="panel table-panel">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Tên danh mục</th>
+                    <th>Mô tả</th>
+                    <th>Số sản phẩm</th>
+                    <th>Trạng thái</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in Model)
+                {
+                    dynamic? meta = metaMap != null && metaMap.Contains(c.Id) ? metaMap[c.Id] : null;
+                    string icon = meta?.Icon ?? "◫";
+                    string desc = meta?.Description ?? "";
+                    bool isActive = c.Status == "Đang hoạt động";
+
+                    <tr>
+                        <td>
+                            <div class="cat-name-cell">
+                                <span class="cat-icon-box">@icon</span>
+                                <strong>@c.Name</strong>
+                            </div>
+                        </td>
+                        <td style="color:#64748b">@(string.IsNullOrEmpty(desc) ? "—" : desc)</td>
+                        <td>@c.ProductCount sản phẩm</td>
+                        <td>
+                            <span class="badge @(isActive ? "badge-success" : "badge-warning")">@c.Status</span>
+                        </td>
+                        <td>
+                            <div class="cat-actions">
+                                <button type="button" class="act-btn"
+                                        data-id="@c.Id"
+                                        data-name="@c.Name"
+                                        data-icon="@icon"
+                                        data-desc="@desc"
+                                        onclick="openEditCatModal(this)">Sửa</button>
+
+                                <form method="post" asp-action="ToggleCategory" asp-controller="Management">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@c.Id" />
+                                    <button type="submit" class="act-btn @(isActive ? "act-disable" : "act-enable")">
+                                        @(isActive ? "Tạm ẩn" : "Kích hoạt")
+                                    </button>
+                                </form>
+
+                                <form method="post" asp-action="DeleteCategory" asp-controller="Management"
+                                      onsubmit="return confirm('Bạn có chắc muốn xóa danh mục @c.Name?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@c.Id" />
+                                    <button type="submit" class="act-btn act-delete">Xóa</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="table-footer"><span>Tổng cộng @Model.Count danh mục</span></div>
+</section>
+
+<script>
+    function closeAllCatBoxes() {
+        ['add-cat-box', 'edit-cat-box'].forEach(id => {
+            document.getElementById(id)?.setAttribute('hidden', '');
+        });
+    }
+
+    function openCatBox(boxId) {
+        const box = document.getElementById(boxId);
+        const isHidden = box.hasAttribute('hidden');
+        closeAllCatBoxes();
+        if (isHidden) {
+            box.removeAttribute('hidden');
+            box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+
+    function selectCatIcon(btn) {
+        const picker = btn.closest('.icon-picker');
+        const targetInput = document.getElementById(picker.dataset.target);
+        picker.querySelectorAll('.icon-opt').forEach(el => el.classList.remove('selected'));
+        btn.classList.add('selected');
+        if (targetInput) targetInput.value = btn.dataset.icon;
+    }
+
+    function openEditCatModal(btn) {
+        closeAllCatBoxes();
+        document.getElementById('edit-cat-id').value = btn.dataset.id;
+        document.getElementById('edit-cat-name').value = btn.dataset.name;
+        document.getElementById('edit-cat-desc').value = btn.dataset.desc;
+
+        const currentIcon = btn.dataset.icon || '◫';
+        document.getElementById('edit-cat-icon').value = currentIcon;
+
+        const picker = document.getElementById('edit-icon-picker');
+        picker.querySelectorAll('.icon-opt').forEach(el => {
+            el.classList.toggle('selected', el.dataset.icon === currentIcon);
+        });
+
+        const box = document.getElementById('edit-cat-box');
+        box.removeAttribute('hidden');
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+</script>

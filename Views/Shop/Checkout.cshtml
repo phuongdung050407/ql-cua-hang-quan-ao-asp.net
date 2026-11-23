@@ -1,7 +1,180 @@
-@model List<ProductViewModel>
-@{ Layout = null; }
-<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Thanh toán</title><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet"><link rel="stylesheet" href="~/css/store.css" /></head><body>
-<header class="store-header"><a class="store-brand" href="/Shop"><span>F</span> FashionHub</a><nav><a href="/Shop/Cart">← Quay lại giỏ hàng</a></nav></header>
-<main class="checkout-page"><div class="checkout-title"><span class="eyebrow">THANH TOÁN AN TOÀN</span><h1>Thông tin đặt hàng</h1></div><div class="checkout-layout"><form class="checkout-form" id="checkout-form"><h2>Thông tin giao hàng</h2><div class="form-grid"><label>Họ và tên<input name="fullName" required placeholder="Nguyễn Văn An"></label><label>Số điện thoại<input name="phone" required placeholder="0912 345 678"></label><label class="full">Email<input name="email" type="email" required placeholder="email@example.com"></label><label class="full">Địa chỉ<input name="address" required placeholder="Số nhà, tên đường"></label><label>Tỉnh / Thành phố<select name="province"><option>TP. Hồ Chí Minh</option><option>Hà Nội</option></select></label><label>Quận / Huyện<select name="district"><option>Quận 1</option><option>Quận 3</option></select></label><label class="full">Ghi chú<textarea name="note" placeholder="Ghi chú cho đơn hàng"></textarea></label></div><h2>Phương thức thanh toán</h2><label class="payment-option selected"><input type="radio" name="payment" value="COD" checked><b>Thanh toán khi nhận hàng (COD)</b></label><label class="payment-option"><input type="radio" name="payment" value="Bank"><b>Chuyển khoản ngân hàng</b></label></form>
-<aside class="order-summary"><h2>Đơn hàng</h2>@foreach(var p in Model){<div class="summary-product"><img src="@p.Image"><div><strong>@p.Name</strong><small>Số lượng: 1</small></div><b>@p.Price.ToString("N0") đ</b></div>}<div class="total"><span>Tổng thanh toán</span><strong>1.130.000 đ</strong></div><form method="post" action="/Shop/PlaceOrder" id="place-order-form">@Html.AntiForgeryToken()<button type="submit" class="checkout-button" id="place-order-button">Đặt hàng</button></form></aside></div></main><script src="~/js/site.js" asp-append-version="true"></script>
-</body></html>
+@model List<CartItemViewModel>
+@{
+    Layout = null;
+    var tongTien = Model.Sum(x => x.SubTotal);
+}
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Thanh toán - FashionHub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="~/css/store.css" asp-append-version="true" />
+</head>
+<body>
+    <header class="store-header">
+        <a class="store-brand" href="/Shop"><span>F</span> FashionHub</a>
+        <nav><a href="/Shop/Cart">← Quay lại giỏ hàng</a></nav>
+    </header>
+
+    <main class="checkout-page">
+        <div class="checkout-title">
+            <span class="eyebrow">THANH TOÁN AN TOÀN</span>
+            <h1>Thông tin đặt hàng</h1>
+        </div>
+
+        @if (TempData["CheckoutError"] != null)
+        {
+            <p style="color:#b91c1c;margin-bottom:16px">@TempData["CheckoutError"]</p>
+        }
+
+        <form method="post" asp-action="PlaceOrder" asp-controller="Shop" class="checkout-layout">
+            @Html.AntiForgeryToken()
+
+            <div class="checkout-form">
+                <h2>Thông tin giao hàng</h2>
+                <div class="form-grid">
+                    <label>Họ và tên
+                        <input name="fullName" value="@ViewBag.FullName" required placeholder="Nguyễn Văn An">
+                    </label>
+                    <label>Số điện thoại
+                        <input name="phone" value="@ViewBag.Phone" required placeholder="0912 345 678">
+                    </label>
+                    <label class="full">Email
+                        <input name="email" type="email" value="@ViewBag.Email" required placeholder="email@example.com">
+                    </label>
+                    <label class="full">Địa chỉ
+                        <input name="address" value="@ViewBag.Address" required placeholder="Số nhà, tên đường">
+                    </label>
+                    @{
+                        var provinces = ViewBag.Provinces as List<ShopProject.Models.Entities.TinhThanh> ?? new();
+                        var selectedProvince = ViewBag.City as string ?? "";
+                    }
+                    <label>Tỉnh / Thành phố
+                        <select name="province" required>
+                            @foreach (var t in provinces)
+                            {
+                                <option value="@t.TenTinhThanh" selected="@(selectedProvince == t.TenTinhThanh)">@t.TenTinhThanh</option>
+                            }
+                        </select>
+                    </label>
+                    <label>Xã / Phường
+                        <input name="district" placeholder="Xã / Phường">
+                    </label>
+                    @{
+                        var voucherError = TempData["VoucherError"] as string;
+                        var hasVoucherError = !string.IsNullOrEmpty(voucherError);
+                    }
+                    <div class="form-group" style="margin-top: 12px;">
+                        <label for="maVoucher">Mã giảm giá (nếu có)</label>
+                        <input type="text"
+                            id="maVoucher"
+                            name="maVoucher"
+                            value=""
+                            placeholder="Nhập mã voucher"
+                            @(hasVoucherError ? "autofocus" : "")
+                            style="@(hasVoucherError ? "border: 1.5px solid #dc2626; background-color: #fef2f2; box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);" : "")" />
+
+                        @if (hasVoucherError)
+                        {
+                            <div style="color: #dc2626; font-size: 0.875rem; font-weight: 500; margin-top: 6px; display: flex; align-items: center; gap: 6px;">
+                                <span>⚠</span>
+                                <span>@voucherError</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <h2>Phương thức thanh toán</h2>
+                <label class="payment-option selected">
+                    <input type="radio" name="payment" value="COD" checked>
+                    <b>Thanh toán khi nhận hàng (COD)</b>
+                </label>
+                <label class="payment-option">
+                    <input type="radio" name="payment" value="Bank">
+                    <b>Chuyển khoản ngân hàng</b>
+                </label>
+                <div id="bank-transfer-panel" style="display:none;margin-top:12px;padding:16px;border:1px solid #cbd5e1;border-radius:10px;background:#f8fafc">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px;font-size:13.5px;line-height:1.6;color:#1e293b">
+            <div style="font-weight:700;margin-bottom:6px">Thông tin thanh toán chuyển khoản (Mô phỏng)</div>
+            <div>Ngân hàng: <strong>MB Bank (Demo)</strong> • STK: <strong>0123456789</strong></div>
+            <div>Chủ tài khoản: <strong>FASHIONHUB DEMO</strong></div>
+            <div>Nội dung CK: <strong>THANHTOAN DEMO</strong></div>
+
+            <div style="margin-top:12px;display:flex;flex-direction:column;gap:8px">
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+                    <input type="radio" name="daChuyenKhoan" value="true" />
+                    <span>1. Đã chuyển khoản xong (đặt hàng & thanh toán thành công)</span>
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="radio" name="daChuyenKhoan" value="false" checked />
+                    <span>2. Chưa chuyển khoản (chờ thanh toán 24 giờ sau khi đặt)</span>
+                </label>
+            </div>
+        </div>
+
+        <div style="text-align:center;background:#ffffff;padding:10px 12px;border:1px solid #e2e8f0;border-radius:8px;flex-shrink:0">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=128x128&data=FASHIONHUB-DEMO-TRANSFER"
+                 alt="QR chuyển khoản mô phỏng" width="128" height="128" style="display:block;margin:0 auto 6px" />
+            <div style="font-size:11.5px;color:#64748b">QR mô phỏng • Không trừ tiền thật</div>
+        </div>
+    </div>
+</div>
+            </div>
+
+<script>
+    (function () {
+        const radios = document.querySelectorAll('input[name="payment"]');
+        const panel = document.getElementById('bank-transfer-panel');
+
+        function syncPaymentSelection() {
+            radios.forEach(r => {
+                const box = r.closest('label') || r.parentElement;
+                if (!box) return;
+                if (r.checked) {
+                    box.style.border = '1.5px solid #18181b';
+                    box.style.borderRadius = '8px';
+                    box.style.background = '#ffffff';
+                } else {
+                    box.style.border = '1px solid #e2e8f0';
+                    box.style.borderRadius = '8px';
+                    box.style.background = '#ffffff';
+                }
+            });
+
+            const selected = document.querySelector('input[name="payment"]:checked');
+            const isBank = selected && (selected.value === 'Bank' || selected.value === 'Chuyen_khoan');
+            if (panel) {
+                panel.style.display = isBank ? 'block' : 'none';
+            }
+        }
+
+        radios.forEach(r => r.addEventListener('change', syncPaymentSelection));
+        syncPaymentSelection();
+    })();
+</script>
+            <aside class="order-summary">
+                <h2>Đơn hàng</h2>
+                @foreach (var p in Model)
+                {
+                    <div class="summary-product">
+                        <img src="@p.Image" alt="@p.Name">
+                        <div>
+                            <strong>@p.Name</strong>
+                            <small>@p.Size - @p.Color | SL: @p.Quantity</small>
+                        </div>
+                        <b>@p.SubTotal.ToString("N0") đ</b>
+                    </div>
+                }
+                <div class="total">
+                    <span>Tổng thanh toán</span>
+                    <strong>@tongTien.ToString("N0") đ</strong>
+                </div>
+                <button type="submit" class="checkout-button">Đặt hàng</button>
+            </aside>
+        </form>
+    </main>
+</body>
+</html>

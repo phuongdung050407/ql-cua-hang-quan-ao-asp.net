@@ -1,7 +1,717 @@
-@{ ViewData["Title"]="Sản phẩm"; }
-<div class="page-heading"><div><p class="eyebrow">QUẢN LÝ</p><h1>Sản phẩm</h1></div><button class="primary-button" data-bs-toggle="modal" data-bs-target="#addModal">＋ Thêm sản phẩm</button></div>
-<div class="management-toolbar"><div class="filter-search">⌕ <input placeholder="Tìm kiếm sản phẩm..."></div><select><option>Tất cả danh mục</option><option>Áo sơ mi</option><option>Váy đầm</option></select><select><option>Tất cả trạng thái</option></select></div>
-<section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Chọn</th><th>Sản phẩm</th><th>Danh mục</th><th>Giá bán</th><th>Tồn kho</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
-@foreach(var p in new[]{("Áo sơ mi linen","Áo sơ mi","450.000 đ","20","Đang bán","photo-1602810318383-e386cc2a3ccf"),("Váy hoa midi","Váy đầm","680.000 đ","14","Đang bán","photo-1595777457583-95e059d581b8"),("Quần jean slim","Quần","550.000 đ","3","Sắp hết","photo-1542272604-787c3835535d"),("Áo khoác denim","Áo khoác","890.000 đ","0","Hết hàng","photo-1523205771623-e0faa4d2813d")}){<tr><td><input type="checkbox"></td><td><div class="product-cell"><img src="https://images.unsplash.com/@p.Item6?w=100"><strong>@p.Item1</strong></div></td><td>@p.Item2</td><td>@p.Item3</td><td>@p.Item4</td><td><span class="badge @(p.Item5=="Đang bán"?"badge-success":p.Item5=="Sắp hết"?"badge-warning":"badge-danger")">@p.Item5</span></td><td><select class="action-select"><option value="">Thao tác</option><option value="view">Xem</option><option value="edit">Sửa</option><option value="delete">Xóa</option></select></td></tr>}
-</tbody></table></div><div class="table-footer"><span>Hiển thị 1-4 trên 48 sản phẩm</span><div><button>‹</button><button class="active">1</button><button>2</button><button>3</button><button>›</button></div></div></section>
-<div class="modal fade" id="addModal"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Thêm sản phẩm mới</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><div class="form-grid-admin"><label>Tên sản phẩm<input></label><label>Danh mục<select><option>Áo sơ mi</option></select></label><label>Giá bán<input></label><label>Tồn kho<input></label><label class="full">Mô tả<textarea></textarea></label></div></div><div class="modal-footer"><button class="secondary-button" data-bs-dismiss="modal">Hủy</button><button class="primary-button">Lưu sản phẩm</button></div></div></div></div>
+@using System.Text.Json
+@using ShopProject.Controllers
+@using ShopProject.Models.Entities
+@model List<ShopProject.Models.ProductViewModel>
+@{
+    ViewData["Title"] = "Quản lý sản phẩm";
+    var categories = ViewBag.Categories as List<DanhMuc> ?? new();
+    var sizes = ViewBag.Sizes as List<KichThuoc> ?? new();
+    var colors = ViewBag.Colors as List<MauSac> ?? new();
+    var variantMap = ViewBag.ProductVariants as Dictionary<int, List<ProductVariantInfo>> ?? new();
+    var pricingAdvices = ViewBag.PricingAdvices as Dictionary<int, ProductTrendAdvice> ?? new();
+    var productMeta = ViewBag.ProductMeta;
+    int? selectedCat = ViewBag.SelectedCategory;
+    var selectedStatus = ViewBag.SelectedStatus as string ?? "";
+    int? openVariantProductId = TempData["OpenVariantProductId"] as int?;
+
+    var variantsJson = JsonSerializer.Serialize(variantMap);
+    var metaJson = JsonSerializer.Serialize(productMeta);
+    var adviceList = pricingAdvices.Values.ToList();
+}
+
+<style>
+    .prod-cell { display: flex; align-items: center; gap: 12px; }
+    .prod-cell img { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; border: 1px solid #e2e8f0; flex-shrink: 0; }
+    .stock-summary-box { display: flex; flex-direction: column; gap: 5px; }
+    .stock-total-line { font-size: 13px; font-weight: 700; color: #0f172a; }
+    .stock-total-line span { font-weight: 500; color: #64748b; font-size: 12px; }
+    .variant-chip-list { display: flex; flex-wrap: wrap; gap: 5px; }
+    .v-chip {
+        display: inline-flex; align-items: center; gap: 4px;
+        padding: 2px 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600;
+        cursor: pointer; border: 1px solid transparent; transition: transform 0.12s ease;
+    }
+    .v-chip:hover { transform: translateY(-1px); }
+    .v-chip-ok { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+    .v-chip-low { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+    .v-chip-out { background: #fef2f2; color: #dc2626; border-color: #fecaca; }
+    .v-chip-off { background: #f1f5f9; color: #64748b; border-color: #cbd5e1; text-decoration: line-through; }
+
+    .prod-actions { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+    .act-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        height: 30px; padding: 0 10px; border-radius: 7px; font-size: 12.5px; font-weight: 500;
+        line-height: 1; white-space: nowrap; text-decoration: none; cursor: pointer;
+        border: 1px solid #e2e8f0; background: #ffffff; color: #334155; transition: all 0.15s ease;
+    }
+    .act-btn:hover { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
+    .act-variant { color: #4f46e5; border-color: #c7d2fe; background: #eef2ff; }
+    .act-variant:hover { background: #e0e7ff; color: #3730a3; }
+    .act-promo { color: #b45309; border-color: #fde68a; background: #fffbeb; font-weight: 600; }
+    .act-promo:hover { background: #fef3c7; }
+    .act-danger { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
+    .act-danger:hover { background: #fee2e2; }
+
+    /* Khung Ước tính lợi nhuận trực quan */
+    .profit-estimator-box {
+        grid-column: 1 / -1;
+        background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
+        border: 1px solid #c7d2fe;
+        border-radius: 12px;
+        padding: 14px 16px;
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 14px;
+    }
+    .margin-presets {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+    }
+    .preset-chip {
+        border: 1px solid #c7d2fe;
+        background: #ffffff;
+        color: #4f46e5;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 4px 9px;
+        border-radius: 999px;
+        cursor: pointer;
+    }
+    .preset-chip:hover { background: #4f46e5; color: #ffffff; }
+    .profit-kpis {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+    }
+    .profit-kpi-item small { display: block; font-size: 11.5px; color: #64748b; }
+    .profit-kpi-item strong { font-size: 15px; color: #0f172a; }
+
+    /* Dải gợi ý điều chỉnh lợi nhuận & tạo mã giảm giá theo xu hướng */
+    .trend-advisor-banner {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-left: 4px solid #4f46e5;
+        border-radius: 14px;
+        padding: 16px 18px;
+        margin-bottom: 18px;
+    }
+    .trend-cards-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+        gap: 12px;
+        margin-top: 12px;
+    }
+    .trend-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 11px;
+        padding: 12px 14px;
+        background: #fafbfc;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .trend-card.is-hot { border-color: #bbf7d0; background: #f0fdf4; }
+    .trend-card.is-slow { border-color: #fde68a; background: #fffbeb; }
+
+    .variant-drawer {
+        background: #ffffff; border: 1.5px solid #c7d2fe; border-radius: 14px;
+        padding: 18px 20px; margin-bottom: 20px; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    }
+    .variant-drawer-head {
+        display: flex; justify-content: space-between; align-items: center; gap: 12px;
+        padding-bottom: 12px; border-bottom: 1px solid #e2e8f0; margin-bottom: 14px;
+    }
+    .variant-mini-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    .variant-mini-table th {
+        text-align: left; font-size: 11.5px; text-transform: uppercase; color: #64748b;
+        padding: 8px 10px; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+    }
+    .variant-mini-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; font-size: 13px; vertical-align: middle; }
+    .variant-mini-table select, .variant-mini-table input {
+        height: 32px; padding: 0 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 12.5px;
+    }
+    .add-variant-strip { background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 10px; padding: 14px; }
+</style>
+
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">SẢN PHẨM & ĐỊNH GIÁ</p>
+        <h1>Quản lý sản phẩm</h1>
+    </div>
+    <button type="button" class="primary-button" onclick="openProdPanel('create-product-box')">＋ Thêm sản phẩm</button>
+</div>
+
+@if (TempData["ProductSuccess"] != null)
+{
+    <p style="color:#15803d;margin-bottom:12px;font-weight:500">@TempData["ProductSuccess"]</p>
+}
+@if (TempData["ProductError"] != null)
+{
+    <p style="color:#b91c1c;margin-bottom:12px;font-weight:500">@TempData["ProductError"]</p>
+}
+
+<!-- 1. KHUNG THÊM SẢN PHẨM MỚI + ƯỚC TÍNH LỢI NHUẬN TỰ ĐỘNG -->
+<section id="create-product-box" class="panel" hidden style="margin-bottom:20px;padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Thêm sản phẩm mới & Thiết lập lợi nhuận</h3>
+        <button type="button" class="act-btn" onclick="closeAllProdPanels()">✕</button>
+    </div>
+    <form method="post" asp-action="CreateProduct" asp-controller="Management" class="form-grid-admin">
+        @Html.AntiForgeryToken()
+        <label>Tên sản phẩm
+            <input name="tenSanPham" required placeholder="VD: Áo polo nam Pique" />
+        </label>
+        <label>Danh mục
+            <select name="danhMucId" required>
+                @foreach (var c in categories)
+                {
+                    <option value="@c.Id">@c.TenDanhMuc</option>
+                }
+            </select>
+        </label>
+        <label>Giá gốc / Giá nhập (VNĐ)
+            <input type="number" name="giaGoc" id="create-cost" min="1000" step="1000" value="200000" required oninput="recalcCreatePricing('margin')" />
+        </label>
+        <label>Tỷ lệ lợi nhuận (%)
+            <input type="number" name="tyLeLoiNhuan" id="create-margin" min="0" max="500" step="0.5" value="35" required oninput="recalcCreatePricing('margin')" />
+        </label>
+        <label>Giá bán ra tự động (VNĐ)
+            <input type="number" name="giaBan" id="create-price" min="1000" step="1000" value="270000" required oninput="recalcCreatePricing('price')" />
+        </label>
+        <label>Tồn kho ban đầu
+            <input type="number" name="soLuongTon" id="create-qty" min="0" value="10" required oninput="recalcCreatePricing('margin')" />
+        </label>
+        <label>Size mặc định
+            <select name="kichThuocId">
+                @foreach (var s in sizes)
+                {
+                    <option value="@s.Id">@s.MaSize</option>
+                }
+            </select>
+        </label>
+        <label>Màu mặc định
+            <select name="mauSacId">
+                @foreach (var m in colors)
+                {
+                    <option value="@m.Id">@m.TenMau</option>
+                }
+            </select>
+        </label>
+        <label>URL ảnh đại diện
+            <input name="imageUrl" placeholder="https://..." />
+        </label>
+        <label>Mô tả ngắn
+            <input name="moTa" placeholder="Chất liệu, form dáng..." />
+        </label>
+
+        <!-- Bảng ước tính lợi nhuận thời gian thực -->
+        <div class="profit-estimator-box">
+            <div>
+                <div style="font-size:12.5px;font-weight:700;color:#3730a3;margin-bottom:6px">📊 Ước tính lợi nhuận bán hàng</div>
+                <div class="margin-presets">
+                    <span style="font-size:12px;color:#64748b">Chọn nhanh mức lãi:</span>
+                    <button type="button" class="preset-chip" onclick="setCreateMargin(20)">+20% (Cạnh tranh)</button>
+                    <button type="button" class="preset-chip" onclick="setCreateMargin(35)">+35% (Tiêu chuẩn)</button>
+                    <button type="button" class="preset-chip" onclick="setCreateMargin(50)">+50% (Cao cấp)</button>
+                    <button type="button" class="preset-chip" onclick="setCreateMargin(70)">+70% (Phụ kiện)</button>
+                </div>
+            </div>
+            <div class="profit-kpis">
+                <div class="profit-kpi-item">
+                    <small>Lãi ròng / 1 sản phẩm</small>
+                    <strong id="est-create-unit-profit" style="color:#15803d">+70,000 đ</strong>
+                </div>
+                <div class="profit-kpi-item">
+                    <small>Biên lãi trên doanh thu</small>
+                    <strong id="est-create-rev-margin">25.9%</strong>
+                </div>
+                <div class="profit-kpi-item">
+                    <small>Tổng lãi dự kiến lô nhập</small>
+                    <strong id="est-create-batch-profit" style="color:#4f46e5">+700,000 đ</strong>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex;align-items:flex-end">
+            <button type="submit" class="primary-button">Lưu sản phẩm</button>
+        </div>
+    </form>
+</section>
+
+<!-- 2. KHUNG CHỈNH SỬA SẢN PHẨM + CẬP NHẬT LỢI NHUẬN -->
+<section id="edit-product-box" class="panel" hidden style="margin-bottom:20px;padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Chỉnh sửa sản phẩm & Tỷ lệ lợi nhuận</h3>
+        <button type="button" class="act-btn" onclick="closeAllProdPanels()">✕</button>
+    </div>
+    <form method="post" asp-action="EditProduct" asp-controller="Management" class="form-grid-admin">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="id" id="edit-prod-id" />
+        <label>Tên sản phẩm
+            <input name="tenSanPham" id="edit-prod-name" required />
+        </label>
+        <label>Danh mục
+            <select name="danhMucId" id="edit-prod-cat" required>
+                @foreach (var c in categories)
+                {
+                    <option value="@c.Id">@c.TenDanhMuc</option>
+                }
+            </select>
+        </label>
+        <label>Giá gốc / Giá nhập (VNĐ)
+            <input type="number" name="giaGoc" id="edit-prod-cost" min="1000" step="1000" required oninput="recalcEditPricing('margin')" />
+        </label>
+        <label>Tỷ lệ lợi nhuận (%)
+            <input type="number" name="tyLeLoiNhuan" id="edit-prod-margin" min="0" max="500" step="0.5" required oninput="recalcEditPricing('margin')" />
+        </label>
+        <label>Giá bán ra (VNĐ)
+            <input type="number" name="giaBan" id="edit-prod-price" min="1000" step="1000" required oninput="recalcEditPricing('price')" />
+        </label>
+        <label>URL ảnh đại diện
+            <input name="imageUrl" id="edit-prod-img" />
+        </label>
+        <label style="grid-column:1 / -1">Mô tả ngắn
+            <input name="moTa" id="edit-prod-desc" />
+        </label>
+
+        <div class="profit-estimator-box">
+            <div style="font-size:13px;color:#334155">
+                Lãi dự kiến mỗi sản phẩm bán ra: <strong id="est-edit-unit-profit" style="color:#15803d;font-size:15px">0 đ</strong>
+            </div>
+            <div style="display:flex;gap:8px">
+                <button type="submit" class="primary-button">Lưu thay đổi</button>
+            </div>
+        </div>
+    </form>
+</section>
+
+<!-- 3. PANEL QUẢN LÝ PHÂN LOẠI SIZE / MÀU -->
+<section id="variant-manager-box" class="variant-drawer" hidden>
+    <div class="variant-drawer-head">
+        <div>
+            <h3 style="margin:0;font-size:16px">Quản lý phân loại Size & Màu: <span id="vm-product-name" style="color:#4f46e5"></span></h3>
+            <small style="color:#64748b">Chỉnh sửa Size, Màu sắc và Giá bán từng phân loại. Thao tác này <b>không làm thay đổi hay cộng dồn tồn kho</b>.</small>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+            <a id="vm-goto-inventory" href="/Management/Inventory" class="act-btn act-variant">📦 Nhập / Điều chỉnh tồn kho</a>
+            <button type="button" class="act-btn" onclick="closeAllProdPanels()">✕ Đóng</button>
+        </div>
+    </div>
+
+    <div style="overflow-x:auto">
+        <table class="variant-mini-table">
+            <thead>
+                <tr>
+                    <th>Mã SKU</th>
+                    <th>Kích thước (Size)</th>
+                    <th>Màu sắc</th>
+                    <th>Giá bán (VNĐ)</th>
+                    <th>Tồn kho thực tế</th>
+                    <th>Trạng thái</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody id="vm-tbody"></tbody>
+        </table>
+    </div>
+
+    <div class="add-variant-strip">
+        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px">＋ Thêm cặp Size & Màu mới (Khởi tạo tồn kho = 0)</div>
+        <form method="post" asp-action="AddVariant" asp-controller="Management" class="form-grid-admin">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="sanPhamId" id="vm-add-prod-id" />
+            <label>Chọn Size
+                <select name="kichThuocId" id="vm-add-size">
+                    @foreach (var s in sizes)
+                    {
+                        <option value="@s.Id">@s.MaSize</option>
+                    }
+                </select>
+            </label>
+            <label>Chọn Màu sắc
+                <select name="mauSacId" id="vm-add-color">
+                    @foreach (var m in colors)
+                    {
+                        <option value="@m.Id">@m.TenMau</option>
+                    }
+                </select>
+            </label>
+            <label>Giá bán phân loại (VNĐ)
+                <input type="number" name="giaBan" id="vm-add-price" min="1000" step="1000" required />
+            </label>
+            <div style="display:flex;align-items:flex-end">
+                <button type="submit" class="primary-button">Thêm phân loại</button>
+            </div>
+        </form>
+    </div>
+</section>
+
+<!-- 4. DẢI PHÂN TÍCH XU HƯỚNG BÁN HÀNG → GỢI Ý LỢI NHUẬN & TẠO MÃ GIẢM GIÁ -->
+@if (adviceList.Count > 0)
+{
+    <section class="trend-advisor-banner">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
+            <div>
+                <h4 style="margin:0;font-size:15px;color:#0f172a">📈 Gợi ý tối ưu lợi nhuận & Kích cầu hàng bán chậm (Phân tích 30 ngày)</h4>
+                <small style="color:#64748b">Hệ thống tự động đề xuất tăng biên lãi cho hàng bán chạy và tạo mã khuyến mãi an toàn (không dưới giá gốc) cho hàng tồn lâu.</small>
+            </div>
+            <span style="font-size:12px;font-weight:600;color:#4f46e5">@adviceList.Count đề xuất hành động</span>
+        </div>
+
+        <div class="trend-cards-grid">
+            @foreach (var adv in adviceList.Take(6))
+            {
+                <div class="trend-card @(adv.TrendType == "hot" ? "is-hot" : "is-slow")">
+                    <div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px">
+                            <strong style="font-size:13.5px;color:#0f172a">@adv.ProductName</strong>
+                            <span style="font-size:11.5px;font-weight:700">@adv.TrendLabel</span>
+                        </div>
+                        <div style="font-size:12px;color:#475569;margin-bottom:4px">@adv.Summary</div>
+                        <div style="font-size:12px;color:#1e293b;font-weight:500">@adv.ActionHint</div>
+                    </div>
+
+                    <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+                        <form method="post" asp-action="ApplyProfitSuggestion" asp-controller="Management" style="display:inline">
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="id" value="@adv.ProductId" />
+                            <input type="hidden" name="newMarginPercent" value="@adv.SuggestedMargin" />
+                            <button type="submit" class="act-btn act-variant">
+                                ✓ Đổi lãi @adv.SuggestedMargin.ToString("0.#")% (@adv.SuggestedPrice.ToString("N0") đ)
+                            </button>
+                        </form>
+
+                        @if (adv.TrendType == "slow" && adv.SuggestedDiscountPercent > 0)
+                        {
+                            <a asp-action="Promotions" asp-controller="Management"
+                               asp-route-prefillCode="@adv.SuggestedPromoCode"
+                               asp-route-prefillDiscount="@adv.SuggestedDiscountPercent"
+                               asp-route-prefillName="Kích cầu @adv.ProductName (-@adv.SuggestedDiscountPercent%)"
+                               class="act-btn act-promo">
+                                ⚡ Tạo mã giảm @adv.SuggestedDiscountPercent%
+                            </a>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+<!-- 5. THANH TÌM KIẾM & LỌC -->
+<form method="get" asp-action="Products" asp-controller="Management" class="management-toolbar">
+    <div class="filter-search">
+        ⌕ <input name="search" value="@ViewBag.Search" placeholder="Tìm kiếm tên hoặc mã sản phẩm...">
+    </div>
+    <select name="categoryId" onchange="this.form.submit()">
+        <option value="">Tất cả danh mục</option>
+        @foreach (var c in categories)
+        {
+            <option value="@c.Id" selected="@(selectedCat == c.Id)">@c.TenDanhMuc</option>
+        }
+    </select>
+    <select name="status" onchange="this.form.submit()">
+        <option value="">Tất cả trạng thái</option>
+        <option value="Đang bán" selected="@(selectedStatus == "Đang bán")">Đang bán</option>
+        <option value="Sắp hết" selected="@(selectedStatus == "Sắp hết")">Sắp hết</option>
+        <option value="Hết hàng" selected="@(selectedStatus == "Hết hàng")">Hết hàng</option>
+        <option value="Ngừng bán" selected="@(selectedStatus == "Ngừng bán")">Ngừng bán</option>
+    </select>
+</form>
+
+<!-- 6. BẢNG DANH SÁCH SẢN PHẨM HIỂN THỊ GIÁ GỐC + % LỢI NHUẬN + GIÁ BÁN -->
+<section class="panel table-panel">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Sản phẩm</th>
+                    <th>Danh mục</th>
+                    <th>Giá gốc / Lợi nhuận</th>
+                    <th>Giá bán</th>
+                    <th>Tồn kho theo Size & Màu</th>
+                    <th>Trạng thái</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var item in Model)
+                {
+                    var badgeClass = item.Status switch
+                    {
+                        "Đang bán" => "status-success",
+                        "Sắp hết" => "status-warning",
+                        "Hết hàng" => "status-danger",
+                        _ => "status-neutral"
+                    };
+
+                    var pVariants = variantMap.TryGetValue(item.Id, out var listV) ? listV : new List<ProductVariantInfo>();
+                    var hasAdvice = pricingAdvices.TryGetValue(item.Id, out var itemAdv);
+
+                    <tr>
+                        <td>
+                            <div class="prod-cell">
+                                <img src="@item.Image" alt="@item.Name">
+                                <div>
+                                    <strong>@item.Name</strong>
+                                    <div style="font-size:12px;color:#64748b">
+                                        @pVariants.Count phân loại
+                                        @if (hasAdvice)
+                                        {
+                                            <span> • @itemAdv!.TrendLabel</span>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>@item.Category</td>
+                        <td>
+                            <div style="font-size:12.5px;color:#475569" id="row-cost-info-@item.Id"></div>
+                        </td>
+                        <td><strong>@item.Price.ToString("N0") đ</strong></td>
+                        <td>
+                            <div class="stock-summary-box">
+                                <div class="stock-total-line">
+                                    Tổng có thể bán: @item.Stock
+                                </div>
+                                <div class="variant-chip-list">
+                                    @foreach (var v in pVariants)
+                                    {
+                                        var chipCls = !v.TrangThai
+                                            ? "v-chip-off"
+                                            : (v.Available <= 0 ? "v-chip-out" : (v.Available <= 5 ? "v-chip-low" : "v-chip-ok"));
+                                        <span class="v-chip @chipCls"
+                                              title="SKU: @v.Sku | Tồn: @v.Stock | Giữ: @v.Reserved | Giá: @v.Price.ToString("N0")đ"
+                                              onclick="openVariantManager(@item.Id, '@Html.Raw(item.Name.Replace("'", "\\'"))')">
+                                            @v.Size - @v.Color: <b>@v.Available</b>
+                                        </span>
+                                    }
+                                </div>
+                            </div>
+                        </td>
+                        <td><span class="status-badge @badgeClass">@item.Status</span></td>
+                        <td>
+                            <div class="prod-actions">
+                                <a asp-action="Details" asp-controller="Shop" asp-route-id="@item.Id" target="_blank" class="act-btn">Xem</a>
+                                <button type="button" class="act-btn act-variant"
+                                        onclick="openVariantManager(@item.Id, '@Html.Raw(item.Name.Replace("'", "\\'"))')">
+                                    Size / Màu (@pVariants.Count)
+                                </button>
+                                <button type="button" class="act-btn"
+                                        onclick="openEditProduct(@item.Id, '@Html.Raw(item.Name.Replace("'", "\\'"))')">
+                                    Sửa
+                                </button>
+                                <form method="post" asp-action="DeleteProduct" asp-controller="Management" style="display:inline"
+                                      onsubmit="return confirm('Xóa sản phẩm này?')">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@item.Id" />
+                                    <button type="submit" class="act-btn act-danger">Xóa</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="table-footer"><span>Hiển thị @Model.Count sản phẩm</span></div>
+</section>
+
+<script>
+    const PRODUCT_VARIANTS = @Html.Raw(variantsJson);
+    const PRODUCT_META = @Html.Raw(metaJson);
+    const ALL_SIZES = @Html.Raw(JsonSerializer.Serialize(sizes.Select(s => new { s.Id, s.MaSize })));
+    const ALL_COLORS = @Html.Raw(JsonSerializer.Serialize(colors.Select(c => new { c.Id, c.TenMau })));
+    const ANTI_FORGERY = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+
+    function fmtVnd(val) {
+        return Math.round(val).toLocaleString('vi-VN') + ' đ';
+    }
+
+    // Điền cột Giá gốc & Lợi nhuận trên từng dòng bảng
+    window.addEventListener('DOMContentLoaded', () => {
+        Object.keys(PRODUCT_META).forEach(id => {
+            const el = document.getElementById('row-cost-info-' + id);
+            const m = PRODUCT_META[id];
+            if (el && m) {
+                el.innerHTML = `Gốc: <b>${fmtVnd(m.GiaGoc)}</b><br><span style="color:#15803d;font-weight:600">+${m.TyLeLoiNhuan}% (+${fmtVnd(m.LoiNhuanDonVi)})</span>`;
+            }
+        });
+    });
+
+    // Tính toán tự động 2 chiều ở Form Thêm sản phẩm
+    function recalcCreatePricing(source) {
+        const cost = parseFloat(document.getElementById('create-cost').value) || 0;
+        const marginEl = document.getElementById('create-margin');
+        const priceEl = document.getElementById('create-price');
+        const qty = parseInt(document.getElementById('create-qty').value) || 0;
+
+        let margin = parseFloat(marginEl.value) || 0;
+        let price = parseFloat(priceEl.value) || 0;
+
+        if (source === 'margin') {
+            price = Math.round((cost * (1 + margin / 100)) / 1000) * 1000;
+            priceEl.value = price;
+        } else if (source === 'price' && cost > 0) {
+            margin = Math.round(((price - cost) * 100 / cost) * 10) / 10;
+            marginEl.value = margin;
+        }
+
+        const unitProfit = price - cost;
+        const revMargin = price > 0 ? ((unitProfit / price) * 100).toFixed(1) : '0.0';
+        const batchProfit = unitProfit * qty;
+
+        document.getElementById('est-create-unit-profit').textContent = (unitProfit >= 0 ? '+' : '') + fmtVnd(unitProfit);
+        document.getElementById('est-create-rev-margin').textContent = revMargin + '%';
+        document.getElementById('est-create-batch-profit').textContent = (batchProfit >= 0 ? '+' : '') + fmtVnd(batchProfit);
+    }
+
+    function setCreateMargin(pct) {
+        document.getElementById('create-margin').value = pct;
+        recalcCreatePricing('margin');
+    }
+
+    // Tính toán tự động 2 chiều ở Form Chỉnh sửa sản phẩm
+    function recalcEditPricing(source) {
+        const cost = parseFloat(document.getElementById('edit-prod-cost').value) || 0;
+        const marginEl = document.getElementById('edit-prod-margin');
+        const priceEl = document.getElementById('edit-prod-price');
+
+        let margin = parseFloat(marginEl.value) || 0;
+        let price = parseFloat(priceEl.value) || 0;
+
+        if (source === 'margin') {
+            price = Math.round((cost * (1 + margin / 100)) / 1000) * 1000;
+            priceEl.value = price;
+        } else if (source === 'price' && cost > 0) {
+            margin = Math.round(((price - cost) * 100 / cost) * 10) / 10;
+            marginEl.value = margin;
+        }
+
+        const unitProfit = price - cost;
+        document.getElementById('est-edit-unit-profit').textContent = (unitProfit >= 0 ? '+' : '') + fmtVnd(unitProfit);
+    }
+
+    function closeAllProdPanels() {
+        ['create-product-box', 'edit-product-box', 'variant-manager-box'].forEach(id => {
+            document.getElementById(id)?.setAttribute('hidden', '');
+        });
+    }
+
+    function openProdPanel(id) {
+        const box = document.getElementById(id);
+        const isHidden = box.hasAttribute('hidden');
+        closeAllProdPanels();
+        if (isHidden) {
+            box.removeAttribute('hidden');
+            box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+
+    function openEditProduct(id, name) {
+        closeAllProdPanels();
+        const meta = PRODUCT_META[id] || {};
+        document.getElementById('edit-prod-id').value = id;
+        document.getElementById('edit-prod-name').value = name;
+        if (meta.DanhMucId) document.getElementById('edit-prod-cat').value = meta.DanhMucId;
+        document.getElementById('edit-prod-cost').value = meta.GiaGoc || meta.GiaBan || 0;
+        document.getElementById('edit-prod-margin').value = meta.TyLeLoiNhuan || 0;
+        document.getElementById('edit-prod-price').value = meta.GiaBan || 0;
+        document.getElementById('edit-prod-img').value = meta.Image || '';
+        document.getElementById('edit-prod-desc').value = meta.MoTa || '';
+        recalcEditPricing('price');
+
+        const box = document.getElementById('edit-product-box');
+        box.removeAttribute('hidden');
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function openVariantManager(productId, productName) {
+        closeAllProdPanels();
+        const meta = PRODUCT_META[productId] || {};
+        const list = PRODUCT_VARIANTS[productId] || [];
+
+        document.getElementById('vm-product-name').textContent = productName;
+        document.getElementById('vm-add-prod-id').value = productId;
+        document.getElementById('vm-add-price').value = meta.GiaBan || 250000;
+        document.getElementById('vm-goto-inventory').href = '/Management/Inventory?search=' + encodeURIComponent(meta.MaSanPham || productName);
+
+        const usedPairs = new Set(list.map(v => `${v.KichThuocId}_${v.MauSacId}`));
+        let foundUnused = false;
+        for (const s of ALL_SIZES) {
+            for (const c of ALL_COLORS) {
+                if (!usedPairs.has(`${s.Id}_${c.Id}`)) {
+                    document.getElementById('vm-add-size').value = s.Id;
+                    document.getElementById('vm-add-color').value = c.Id;
+                    foundUnused = true;
+                    break;
+                }
+            }
+            if (foundUnused) break;
+        }
+
+        const tbody = document.getElementById('vm-tbody');
+        tbody.innerHTML = '';
+
+        list.forEach(v => {
+            const sizeOpts = ALL_SIZES.map(s => `<option value="${s.Id}" ${s.Id === v.KichThuocId ? 'selected' : ''}>${s.MaSize}</option>`).join('');
+            const colorOpts = ALL_COLORS.map(c => `<option value="${c.Id}" ${c.Id === v.MauSacId ? 'selected' : ''}>${c.TenMau}</option>`).join('');
+
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><code style="background:#f1f5f9;padding:3px 7px;border-radius:5px;font-size:12px">${v.Sku}</code></td>
+                <td>
+                    <form id="form-edit-v-${v.Id}" method="post" action="/Management/EditVariant">
+                        <input type="hidden" name="__RequestVerificationToken" value="${ANTI_FORGERY}" />
+                        <input type="hidden" name="variantId" value="${v.Id}" />
+                        <input type="hidden" name="sanPhamId" value="${productId}" />
+                    </form>
+                    <select form="form-edit-v-${v.Id}" name="kichThuocId">${sizeOpts}</select>
+                </td>
+                <td><select form="form-edit-v-${v.Id}" name="mauSacId">${colorOpts}</select></td>
+                <td><input form="form-edit-v-${v.Id}" type="number" name="giaBan" min="1000" step="1000" value="${v.Price}" style="width:115px" required /></td>
+                <td><strong>${v.Available}</strong> <span style="color:#64748b;font-size:12px">(Tồn: ${v.Stock} | Giữ: ${v.Reserved})</span></td>
+                <td>
+                    <select form="form-edit-v-${v.Id}" name="trangThai">
+                        <option value="true" ${v.TrangThai ? 'selected' : ''}>Đang bán</option>
+                        <option value="false" ${!v.TrangThai ? 'selected' : ''}>Tạm ẩn</option>
+                    </select>
+                </td>
+                <td>
+                    <div style="display:flex;gap:6px">
+                        <button type="submit" form="form-edit-v-${v.Id}" class="act-btn act-variant">Lưu sửa</button>
+                        <form method="post" action="/Management/DeleteVariant" style="display:inline"
+                              onsubmit="return confirm('Xóa hoặc tạm ẩn phân loại ${v.Sku}?')">
+                            <input type="hidden" name="__RequestVerificationToken" value="${ANTI_FORGERY}" />
+                            <input type="hidden" name="variantId" value="${v.Id}" />
+                            <input type="hidden" name="sanPhamId" value="${productId}" />
+                            <button type="submit" class="act-btn act-danger">Xóa</button>
+                        </form>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        const box = document.getElementById('variant-manager-box');
+        box.removeAttribute('hidden');
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    @if (openVariantProductId.HasValue)
+    {
+        <text>
+        window.addEventListener('DOMContentLoaded', () => {
+            const targetId = @openVariantProductId.Value;
+            const targetItem = @Html.Raw(JsonSerializer.Serialize(Model.Select(m => new { m.Id, m.Name })))
+                .find(x => x.Id === targetId);
+            if (targetItem) openVariantManager(targetItem.Id, targetItem.Name);
+        });
+        </text>
+    }
+</script>

@@ -1,4 +1,65 @@
-@{ ViewData["Title"]="Đánh giá"; }
-<div class="page-heading"><div><p class="eyebrow">PHẢN HỒI</p><h1>Đánh giá sản phẩm</h1></div></div>
-<div class="stats-grid people-stats"><article class="stat-card"><div class="stat-icon violet">★</div><div><p>Điểm trung bình</p><strong>4.8/5</strong></div></article><article class="stat-card"><div class="stat-icon blue">▤</div><div><p>Tổng đánh giá</p><strong>246</strong></div></article><article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Chờ duyệt</p><strong>8</strong></div></article><article class="stat-card"><div class="stat-icon green">✓</div><div><p>Tỷ lệ hài lòng</p><strong>96%</strong></div></article></div>
-<section class="panel review-panel">@foreach(var r in new[]{("Nguyễn Minh Anh","Áo sơ mi linen","5","Chất vải đẹp, form dáng vừa người. Sẽ tiếp tục mua thêm.","19/11/2026","Đã duyệt"),("Trần Quốc Bảo","Quần jean slim","4","Quần vừa và đẹp, giao hàng nhanh.","18/11/2026","Chờ duyệt"),("Lê Thu Hà","Váy hoa midi","5","Rất đẹp và giống hình. Cảm ơn shop.","18/11/2026","Đã duyệt")}){<article class="review-row"><div class="review-user"><div>@r.Item1.Substring(0,1)</div><span><strong>@r.Item1</strong><small>@r.Item5</small></span></div><div class="review-content"><strong>@r.Item2</strong><div class="stars">★★★★★</div><p>@r.Item4</p></div><span class="badge @(r.Item6=="Đã duyệt"?"badge-success":"badge-warning")">@r.Item6</span><select class="action-select"><option value="">Thao tác</option><option value="approve">Duyệt</option><option value="reply">Trả lời</option><option value="hide">Ẩn đánh giá</option></select></article>}</section>
+@model List<ReviewViewModel>
+@{
+    ViewData["Title"] = "Đánh giá";
+    double avgRating = ViewBag.AvgRating ?? 5.0;
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">PHẢN HỒI</p>
+        <h1>Đánh giá sản phẩm</h1>
+    </div>
+</div>
+
+@if (TempData["ReviewSuccess"] != null)
+{
+    <p style="color:#15803d;margin-bottom:12px">@TempData["ReviewSuccess"]</p>
+}
+
+<div class="stats-grid people-stats">
+    <article class="stat-card">
+        <div class="stat-icon violet">★</div>
+        <div><p>Điểm trung bình</p><strong>@avgRating.ToString("0.0")/5</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon blue">▤</div>
+        <div><p>Tổng đánh giá</p><strong>@ViewBag.TotalReviews</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon amber">◷</div>
+        <div><p>Chờ duyệt</p><strong>@ViewBag.PendingReviews</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon green">✓</div>
+        <div><p>Tỷ lệ hài lòng</p><strong>@ViewBag.PositiveRate%</strong></div>
+    </article>
+</div>
+
+<section class="panel review-panel">
+    @if (Model.Count == 0)
+    {
+        <p style="padding:16px">Chưa có đánh giá nào từ khách hàng.</p>
+    }
+    @foreach (var r in Model)
+    {
+        <article class="review-row">
+            <div class="review-user">
+                <div>@(string.IsNullOrEmpty(r.Customer) ? "K" : r.Customer.Substring(0, 1).ToUpper())</div>
+                <span><strong>@r.Customer</strong><small>@r.Date</small></span>
+            </div>
+            <div class="review-content">
+                <strong>@r.Product</strong>
+                <div class="stars">@(new string('★', Math.Clamp(r.Rating, 1, 5)))</div>
+                <p>@r.Comment</p>
+            </div>
+            <span class="badge @(r.Status == "Đã duyệt" ? "badge-success" : r.Status == "Chờ duyệt" ? "badge-warning" : "badge-danger")">@r.Status</span>
+            <form method="post" asp-action="UpdateReview" asp-controller="Management" style="display:flex;gap:6px;align-items:center">
+                @Html.AntiForgeryToken()
+                <input type="hidden" name="id" value="@r.Id" />
+                <input name="replyText" placeholder="Phản hồi shop..." style="width:140px" />
+                <button type="submit" name="actionType" value="reply" class="icon-button">Trả lời</button>
+                <button type="submit" name="actionType" value="approve" class="icon-button">Duyệt</button>
+                <button type="submit" name="actionType" value="hide" class="icon-button">Ẩn</button>
+            </form>
+        </article>
+    }
+</section>

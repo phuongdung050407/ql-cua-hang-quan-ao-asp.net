@@ -1,4 +1,73 @@
-@{ ViewData["Title"]="Người dùng"; }
-<div class="page-heading"><div><p class="eyebrow">TÀI KHOẢN</p><h1>Người dùng</h1></div><button class="primary-button">＋ Thêm người dùng</button></div>
-<div class="management-toolbar"><div class="filter-search">⌕ <input placeholder="Tìm khách hàng..."></div><select><option>Tất cả vai trò</option><option>Khách hàng</option><option>Quản trị</option></select></div>
-<section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Người dùng</th><th>Số điện thoại</th><th>Email</th><th>Vai trò</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>@foreach(var u in new[]{("Nguyễn Minh Anh","0912 456 789","anh@gmail.com","Khách hàng","Hoạt động"),("Trần Quốc Bảo","0988 123 456","bao@gmail.com","Khách hàng","Hoạt động"),("Lê Thu Hà","0977 456 123","ha@gmail.com","Khách hàng","Tạm khóa"),("Trần Minh","0903 222 111","minh@fashion.vn","Quản trị viên","Hoạt động")}){<tr><td><div class="person-cell"><div>@u.Item1.Substring(0,1)</div><strong>@u.Item1</strong></div></td><td>@u.Item2</td><td>@u.Item3</td><td>@u.Item4</td><td><select class="status-select" data-status-for="user" data-current="@u.Item5"><option>Hoạt động</option><option>Tạm khóa</option></select></td><td><button type="button" class="icon-button status-save">Lưu</button></td></tr>}</tbody></table></div></section>
+@model List<PersonViewModel>
+@{
+    ViewData["Title"] = "Người dùng";
+    var selectedRole = ViewBag.SelectedRole as string ?? "";
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">TÀI KHOẢN</p>
+        <h1>Người dùng</h1>
+    </div>
+</div>
+
+@if (TempData["UserSuccess"] != null)
+{
+    <p style="color:#15803d;margin-bottom:12px">@TempData["UserSuccess"]</p>
+}
+
+<form method="get" asp-action="Users" asp-controller="Management" class="management-toolbar">
+    <div class="filter-search">
+        ⌕ <input name="search" value="@ViewBag.Search" placeholder="Tìm họ tên, email, SĐT...">
+    </div>
+    <select name="role" onchange="this.form.submit()">
+        <option value="">Tất cả vai trò</option>
+        <option value="KHACH_HANG" selected="@(selectedRole == "KHACH_HANG")">Khách hàng</option>
+        <option value="NHAN_VIEN" selected="@(selectedRole == "NHAN_VIEN")">Nhân viên</option>
+        <option value="ADMIN" selected="@(selectedRole == "ADMIN")">Quản trị viên</option>
+    </select>
+</form>
+
+<section class="panel table-panel">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Người dùng</th>
+                    <th>Số điện thoại</th>
+                    <th>Email</th>
+                    <th>Vai trò</th>
+                    <th>Trạng thái</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in Model)
+                {
+                    <tr>
+                        <td>
+                            <div class="person-cell">
+                                <div>@(string.IsNullOrEmpty(u.Name) ? "U" : u.Name.Substring(0, 1).ToUpper())</div>
+                                <strong>@u.Name</strong>
+                            </div>
+                        </td>
+                        <td>@u.Phone</td>
+                        <td>@u.Email</td>
+                        <td>@u.Role</td>
+                        <td>
+                            <form method="post" asp-action="UpdateUserStatus" asp-controller="Management" style="display:flex;gap:6px;align-items:center">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@u.Id" />
+                                <select name="status" class="status-select">
+                                    <option value="Hoat_dong" selected="@(u.Status == "Hoạt động")">Hoạt động</option>
+                                    <option value="Khoa" selected="@(u.Status == "Tạm khóa")">Tạm khóa</option>
+                                </select>
+                                <button type="submit" class="icon-button">Lưu</button>
+                            </form>
+                        </td>
+                        <td>—</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

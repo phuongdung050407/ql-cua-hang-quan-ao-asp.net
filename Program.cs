@@ -1,6 +1,16 @@
+using Microsoft.EntityFrameworkCore;
+using ShopProject.Models.Entities;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Cấu hình Cookie Authentication
+// Add services to the container.
+builder.Services.AddControllersWithViews();
+
+// 1. Kết nối SQL Server
+builder.Services.AddDbContext<ClothingShopDbContext>(options =>
+    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+// 2. Cấu hình Cookie Authentication (dùng thống nhất scheme "ShopCookie")
 builder.Services.AddAuthentication("ShopCookie")
     .AddCookie("ShopCookie", options =>
     {
@@ -10,16 +20,12 @@ builder.Services.AddAuthentication("ShopCookie")
         options.SlidingExpiration = true;
     });
 
-// Add services to the container.
-builder.Services.AddControllersWithViews();
-
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Home/Error");
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 
@@ -28,7 +34,7 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-app.UseAuthentication(); // Thêm dòng này để sử dụng Authentication
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllerRoute(

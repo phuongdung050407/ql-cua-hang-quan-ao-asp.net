@@ -1,4 +1,8 @@
-﻿<!DOCTYPE html>
+﻿@{
+    var currentController = ViewContext.RouteData.Values["controller"]?.ToString();
+    var currentAction = ViewContext.RouteData.Values["action"]?.ToString();
+}
+<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="utf-8" />
@@ -15,23 +19,46 @@
         <a class="brand" asp-controller="Home" asp-action="Index"><span class="brand-mark">F</span><span>Fashion<span>Hub</span></span></a>
         <nav>
             <p class="nav-label">QUẢN LÝ</p>
-            <a class="nav-link active" asp-controller="Home" asp-action="Index"><b>▦</b> Tổng quan</a>
+            <a class="nav-link @(currentController == "Home" && currentAction == "Index" ? "active" : "")"
+               asp-controller="Home" asp-action="Index"><b>▦</b> Tổng quan</a>
+
             @if (User.IsInRole("Admin"))
             {
-                <a class="nav-link" asp-controller="Management" asp-action="Products"><b>◇</b> Sản phẩm</a>
-                <a class="nav-link" asp-controller="Management" asp-action="Categories"><b>⊞</b> Danh mục</a>
+                <a class="nav-link @(currentController == "Management" && currentAction == "Products" ? "active" : "")"
+                   asp-controller="Management" asp-action="Products"><b>❖</b> Sản phẩm</a>
+
+                <a class="nav-link @(currentController == "Management" && currentAction == "Categories" ? "active" : "")"
+                   asp-controller="Management" asp-action="Categories"><b>⊞</b> Danh mục</a>
+
+                <a class="nav-link @(currentController == "Management" && currentAction == "Provinces" ? "active" : "")"
+                   asp-controller="Management" asp-action="Provinces"><b>⌖</b> Khu vực giao hàng</a>
             }
-            <a class="nav-link" asp-controller="Management" asp-action="Orders"><b>▤</b> Đơn đặt hàng <em>8</em></a>
-            <a class="nav-link" asp-controller="Management" asp-action="Inventory"><b>▱</b> Kho hàng</a>
+
+            <a class="nav-link @(currentController == "Management" && currentAction == "Orders" ? "active" : "")"
+               asp-controller="Management" asp-action="Orders"><b>▤</b> Đơn đặt hàng</a>
+
+            <a class="nav-link @(currentController == "Management" && currentAction == "Inventory" ? "active" : "")"
+               asp-controller="Management" asp-action="Inventory"><b>▣</b> Kho hàng</a>
+
             @if (User.IsInRole("Admin"))
             {
-                <a class="nav-link" asp-controller="Management" asp-action="Users"><b>♙</b> Người dùng</a>
-                <a class="nav-link" asp-controller="Management" asp-action="Employees"><b>♧</b> Nhân viên</a>
+                <a class="nav-link @(currentController == "Management" && currentAction == "Users" ? "active" : "")"
+                   asp-controller="Management" asp-action="Users"><b>♙</b> Người dùng</a>
+
+                <a class="nav-link @(currentController == "Management" && currentAction == "Employees" ? "active" : "")"
+                   asp-controller="Management" asp-action="Employees"><b>♟</b> Nhân viên</a>
+
                 <p class="nav-label">MARKETING</p>
-                <a class="nav-link" asp-controller="Management" asp-action="Promotions"><b>◫</b> Khuyến mãi</a>
-                <a class="nav-link" asp-controller="Management" asp-action="Reports"><b>⌁</b> Báo cáo</a>
+                <a class="nav-link @(currentController == "Management" && currentAction == "Promotions" ? "active" : "")"
+                   asp-controller="Management" asp-action="Promotions"><b>％</b> Khuyến mãi</a>
+
+                <a class="nav-link @(currentController == "Management" && currentAction == "Reports" ? "active" : "")"
+                   asp-controller="Management" asp-action="Reports"><b>◔</b> Báo cáo</a>
             }
-            <a class="nav-link" asp-controller="Management" asp-action="Reviews"><b>☆</b> Đánh giá</a>
+
+            <a class="nav-link @(currentController == "Management" && currentAction == "Reviews" ? "active" : "")"
+               asp-controller="Management" asp-action="Reviews"><b>★</b> Đánh giá</a>
+
             <a class="nav-link" asp-controller="Shop" asp-action="Index"><b>↗</b> Xem cửa hàng</a>
         </nav>
         <div class="sidebar-user">

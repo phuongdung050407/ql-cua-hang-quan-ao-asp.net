@@ -1,4 +1,843 @@
-@{ ViewData["Title"]="Kho hàng"; }
-<div class="page-heading"><div><p class="eyebrow">KHO HÀNG</p><h1>Quản lý kho</h1></div><button class="primary-button">＋ Nhập kho</button></div>
-<div class="stats-grid people-stats"><article class="stat-card"><div class="stat-icon violet">▥</div><div><p>Tổng tồn kho</p><strong>1.248</strong></div></article><article class="stat-card"><div class="stat-icon green">↗</div><div><p>Giá trị kho</p><strong>684 tr</strong></div></article><article class="stat-card"><div class="stat-icon amber">△</div><div><p>Sắp hết hàng</p><strong>12</strong></div></article><article class="stat-card"><div class="stat-icon blue">＋</div><div><p>Nhập kho tháng</p><strong>320</strong></div></article></div>
-<section class="panel table-panel"><div class="management-toolbar"><div class="filter-search">⌕ <input placeholder="Tìm mã SKU, sản phẩm..."></div><select><option>Tất cả kho</option><option>Kho miền Bắc</option><option>Kho miền Nam</option></select></div><div class="table-wrap"><table><thead><tr><th>Sản phẩm</th><th>Mã SKU</th><th>Tồn kho</th><th>Đã giữ</th><th>Có thể bán</th><th>Vị trí</th><th></th></tr></thead><tbody>@foreach(var i in new[]{("Áo sơ mi linen","ASM-WHT-M","20","2","18","K1-A3"),("Váy hoa midi","VD-HOA-S","14","3","11","K2-B1"),("Quần jean slim","QJ-BLU-M","3","1","2","K1-C4"),("Áo khoác denim","AK-DEN-L","0","0","0","K3-A1")}){<tr><td><strong>@i.Item1</strong></td><td>@i.Item2</td><td><strong>@i.Item3</strong></td><td>@i.Item4</td><td>@i.Item5</td><td>@i.Item6</td><td><select class="action-select"><option value="">Thao tác</option><option value="view">Xem phiếu</option><option value="adjust">Điều chỉnh tồn</option><option value="export">Xuất kho</option></select></td></tr>}</tbody></table></div></section>
+@model List<ShopProject.Models.Entities.TonKho>
+@{
+    ViewData["Title"] = "Quản lý kho";
+    var khos = ViewBag.Khos as List<ShopProject.Models.Entities.Kho> ?? new();
+    var allVariants = ViewBag.AllVariants as List<ShopProject.Models.Entities.BienTheSanPham> ?? new();
+    var alertMap = ViewBag.AlertMap as Dictionary<string, (string Level, string Tag, string Reason, int InCart, int Sold, int SuggestedQty)>
+                   ?? new();
+    int? selectedKho = ViewBag.SelectedKho;
+    var alertFilter = ViewBag.AlertFilter as string ?? "";
+
+    var totalStock = Model.Sum(t => t.SoLuongTon);
+    var totalReserved = Model.Sum(t => t.SoLuongGiuCho);
+    var totalCostValue = Model.Sum(t => (decimal)t.SoLuongTon * t.BienThe.SanPham.GiaGoc);
+    var totalSaleValue = Model.Sum(t => (decimal)t.SoLuongTon * t.BienThe.GiaBan);
+    var totalPotentialProfit = totalSaleValue - totalCostValue;
+    var warningItems = Model.Where(t => alertMap.TryGetValue($"{t.KhoId}_{t.BienTheId}", out var a) && a.Level != "ok").ToList();
+    var groupedByProduct = Model.GroupBy(t => t.BienThe.SanPhamId).ToList();
+}
+<style>
+    .inv-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .secondary-btn-top {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 40px;
+        padding: 0 16px;
+        border-radius: 10px;
+        font-size: 13.5px;
+        font-weight: 600;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #1e293b;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .secondary-btn-top:hover {
+        background: #f8fafc;
+        border-color: #4f46e5;
+        color: #4f46e5;
+    }
+    .sku-tag {
+        display: inline-block;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px;
+        font-weight: 600;
+        color: #334155;
+        background: #f1f5f9;
+        border: 1px solid #e2e8f0;
+        padding: 2px 7px;
+        border-radius: 6px;
+    }
+    .alert-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 3px 9px;
+        border-radius: 999px;
+        font-size: 11.5px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .alert-out { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+    .alert-low { background: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+    .alert-demand { background: #f5f3ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+    .alert-ok { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
+
+    .restock-banner {
+        background: linear-gradient(135deg, #fffbeb 0%, #fef2f2 100%);
+        border: 1px solid #fde68a;
+        border-radius: 14px;
+        padding: 16px 18px;
+        margin-bottom: 18px;
+    }
+    .restock-banner-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 10px;
+        gap: 12px;
+    }
+    .restock-banner-head h4 {
+        margin: 0;
+        font-size: 14.5px;
+        font-weight: 700;
+        color: #92400e;
+    }
+    .restock-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .restock-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: #ffffff;
+        border: 1px solid #fcd34d;
+        border-radius: 9px;
+        padding: 6px 10px;
+        font-size: 12.5px;
+        color: #1e293b;
+    }
+    .restock-chip button {
+        border: 0;
+        background: #4f46e5;
+        color: #ffffff;
+        font-size: 11.5px;
+        font-weight: 600;
+        padding: 4px 8px;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    .act-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 30px;
+        padding: 0 11px;
+        border-radius: 8px;
+        font-size: 12.5px;
+        font-weight: 500;
+        white-space: nowrap;
+        text-decoration: none;
+        cursor: pointer;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
+        color: #334155;
+        transition: all 0.15s ease;
+    }
+    .act-btn:hover { background: #f8fafc; border-color: #cbd5e1; color: #0f172a; }
+    .act-import { color: #4f46e5; border-color: #c7d2fe; background: #eef2ff; }
+    .act-import:hover { background: #e0e7ff; color: #3730a3; }
+
+    /* Excel Upload Card Aesthetics */
+    .excel-card {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 20px 22px;
+        margin-bottom: 20px;
+        box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04);
+    }
+    .excel-card-header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+        margin-bottom: 16px;
+    }
+    .excel-steps {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px;
+        margin-top: 6px;
+        font-size: 12.5px;
+        color: #64748b;
+    }
+    .excel-step-pill {
+        background: #f1f5f9;
+        color: #334155;
+        padding: 2px 9px;
+        border-radius: 999px;
+        font-weight: 500;
+    }
+    .excel-dropzone {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        border: 1.5px dashed #cbd5e1;
+        background: #f8fafc;
+        border-radius: 12px;
+        padding: 18px 20px;
+        cursor: pointer;
+        transition: all 0.18s ease;
+    }
+    .excel-dropzone:hover,
+    .excel-dropzone.is-dragover {
+        border-color: #4f46e5;
+        background: #eef2ff;
+    }
+    .excel-dz-left {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+    .excel-icon-box {
+        width: 46px;
+        height: 46px;
+        border-radius: 12px;
+        background: #dcfce7;
+        color: #15803d;
+        border: 1px solid #bbf7d0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 13px;
+        letter-spacing: 0.5px;
+        flex-shrink: 0;
+    }
+    .excel-dz-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #0f172a;
+        margin-bottom: 2px;
+    }
+    .excel-dz-sub {
+        font-size: 12px;
+        color: #64748b;
+    }
+    .excel-selected-bar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-top: 12px;
+        padding: 12px 16px;
+        border-radius: 12px;
+        background: #f5f3ff;
+        border: 1px solid #c7d2fe;
+    }
+    .excel-file-meta {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 13.5px;
+        color: #1e293b;
+    }
+    .excel-size-badge {
+        background: #ffffff;
+        border: 1px solid #ddd6fe;
+        color: #4f46e5;
+        font-size: 11.5px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 999px;
+    }
+
+    /* View mode switch */
+    .view-switch-group {
+        display: inline-flex;
+        background: #f1f5f9;
+        padding: 3px;
+        border-radius: 9px;
+        border: 1px solid #e2e8f0;
+    }
+    .view-switch-btn {
+        border: 0;
+        background: transparent;
+        padding: 6px 12px;
+        border-radius: 7px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #64748b;
+        cursor: pointer;
+    }
+    .view-switch-btn.active {
+        background: #ffffff;
+        color: #4f46e5;
+        box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    }
+
+    /* Product Matrix Cards */
+    .inv-product-group {
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 16px 18px;
+        margin-bottom: 14px;
+    }
+    .inv-group-header {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #f1f5f9;
+        margin-bottom: 14px;
+    }
+    .inv-group-totals {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: center;
+    }
+    .tot-pill {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 4px 10px;
+        font-size: 12.5px;
+        color: #334155;
+    }
+    .variant-matrix-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(265px, 1fr));
+        gap: 12px;
+    }
+    .variant-card {
+        border: 1px solid #e2e8f0;
+        border-radius: 11px;
+        padding: 12px 14px;
+        background: #fafbfc;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 10px;
+    }
+    .variant-card.is-out { border-color: #fecaca; background: #fffafa; }
+    .variant-card.is-low { border-color: #fde68a; background: #fffdf7; }
+    .variant-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+    }
+    .size-color-badge {
+        font-size: 14px;
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .variant-metrics {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 7px 10px;
+        font-size: 12.5px;
+    }
+</style>
+
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">KHO HÀNG</p>
+        <h1>Quản lý kho</h1>
+    </div>
+    <div class="inv-header-actions">
+        <button type="button" class="secondary-btn-top" onclick="openInvBox('excel-import-box')">
+            <span>▤</span> Nhập từ Excel
+        </button>
+        <button type="button" class="primary-button" onclick="openInvBox('quick-import-box')">
+            ＋ Nhập kho
+        </button>
+    </div>
+</div>
+
+@if (TempData["InventorySuccess"] != null)
+{
+    <p style="color:#15803d;margin-bottom:12px;font-weight:500">@TempData["InventorySuccess"]</p>
+}
+@if (TempData["InventoryError"] != null)
+{
+    <p style="color:#b91c1c;margin-bottom:12px;font-weight:500">@TempData["InventoryError"]</p>
+}
+
+<!-- 1. KHUNG NHẬP KHO NHANH THỦ CÔNG -->
+<section id="quick-import-box" class="panel" hidden style="margin-bottom:20px;padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Phiếu nhập kho nhanh</h3>
+        <button type="button" class="act-btn" onclick="closeAllInvBoxes()">✕</button>
+    </div>
+    <form method="post" asp-action="ImportStock" asp-controller="Management" class="form-grid-admin">
+        @Html.AntiForgeryToken()
+        <label>Kho nhập
+            <select name="khoId" id="imp-kho-id" required>
+                @foreach (var k in khos)
+                {
+                    <option value="@k.Id">@k.TenKho (@k.MaKho)</option>
+                }
+            </select>
+        </label>
+        <label>Sản phẩm / Phân loại (SKU)
+            <select name="bienTheId" id="imp-bienthe-id" required>
+                @foreach (var bt in allVariants)
+                {
+                    <option value="@bt.Id">[@bt.Sku] @bt.SanPham.TenSanPham (@bt.KichThuoc?.MaSize - @bt.MauSac?.TenMau)</option>
+                }
+            </select>
+        </label>
+        <label>Số lượng nhập thêm
+            <input type="number" name="soLuongNhap" id="imp-qty" min="1" value="10" required />
+        </label>
+        <div style="display:flex;align-items:flex-end">
+            <button type="submit" class="primary-button">Xác nhận nhập kho</button>
+        </div>
+    </form>
+</section>
+
+<!-- 2. KHUNG NHẬP KHO HÀNG LOẠT TỪ FILE EXCEL (THẨM MỸ & GIỚI HẠN 5 MB) -->
+<section id="excel-import-box" class="excel-card" hidden>
+    <div class="excel-card-header">
+        <div>
+            <h3 style="margin:0;font-size:17px;color:#0f172a">Nhập kho hàng loạt từ file Excel</h3>
+            <div class="excel-steps">
+                <span class="excel-step-pill">1. Tải file mẫu</span>
+                <span>→</span>
+                <span class="excel-step-pill">2. Điền cột <b>SoLuongNhapThem</b></span>
+                <span>→</span>
+                <span class="excel-step-pill">3. Tải file lên & Xác nhận</span>
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+            <a asp-action="DownloadInventoryTemplate" asp-controller="Management" class="act-btn act-import" style="height:34px;padding:0 13px">
+                ⬇ Tải file Excel mẫu (.xlsx)
+            </a>
+            <button type="button" class="act-btn" style="height:34px" onclick="closeAllInvBoxes()">✕</button>
+        </div>
+    </div>
+
+    <form method="post" asp-action="ImportStockExcel" asp-controller="Management" enctype="multipart/form-data">
+        @Html.AntiForgeryToken()
+
+        <input type="file" id="excel-file-input" name="excelFile" accept=".xlsx,.csv" hidden onchange="handleExcelFileChange(this.files[0])" />
+
+        <label for="excel-file-input" id="excel-dropzone" class="excel-dropzone">
+            <div class="excel-dz-left">
+                <div class="excel-icon-box">XLSX</div>
+                <div>
+                    <div class="excel-dz-title">Kéo thả file Excel vào đây hoặc bấm chọn từ máy tính</div>
+                    <div class="excel-dz-sub">Chỉ nhận định dạng <b>.xlsx</b> hoặc <b>.csv</b> • Dung lượng tối đa <b>5 MB</b></div>
+                </div>
+            </div>
+        </label>
+
+        <div id="excel-client-error" hidden style="color:#dc2626;font-size:13px;font-weight:500;margin-top:10px"></div>
+
+        <div id="excel-selected-bar" class="excel-selected-bar" hidden>
+            <div class="excel-file-meta">
+                <span style="font-size:18px">📄</span>
+                <strong id="excel-file-name"></strong>
+                <span id="excel-file-size" class="excel-size-badge"></span>
+                <span style="color:#15803d;font-size:12px;font-weight:600">✓ Sẵn sàng nhập</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px">
+                <button type="button" class="act-btn" onclick="clearExcelFile()">Bỏ chọn</button>
+                <button type="submit" class="primary-button" style="height:36px;padding:0 16px">
+                    Xác nhận nhập từ Excel
+                </button>
+            </div>
+        </div>
+    </form>
+</section>
+
+<!-- 3. KHUNG ĐIỀU CHỈNH TỒN KHO KIỂM KÊ -->
+<section id="adjust-stock-box" class="panel" hidden style="margin-bottom:20px;padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Điều chỉnh tồn kho thực tế: <span id="adj-sku-title" style="color:#4f46e5"></span></h3>
+        <button type="button" class="act-btn" onclick="closeAllInvBoxes()">✕</button>
+    </div>
+    <form method="post" asp-action="AdjustStock" asp-controller="Management" class="form-grid-admin">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="khoId" id="adj-kho-id" />
+        <input type="hidden" name="bienTheId" id="adj-bienthe-id" />
+        <label>Số lượng tồn kho mới (không nhỏ hơn lượng đang lưu giỏ hàng)
+            <input type="number" name="soLuongMoi" id="adj-qty" min="0" required />
+        </label>
+        <div style="display:flex;align-items:flex-end">
+            <button type="submit" class="primary-button">Lưu điều chỉnh</button>
+        </div>
+    </form>
+</section>
+
+<!-- 4. 4 THẺ CHỈ SỐ TỔNG QUAN KHO -->
+<section class="stats-grid" style="margin-bottom:18px">
+    <article class="stat-card">
+        <div class="stat-icon purple">▦</div>
+        <div>
+            <span>Tổng tồn kho</span>
+            <strong>@totalStock.ToString("N0")</strong>
+        </div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon green">↗</div>
+        <div>
+            <span>Giá trị kho (Giá bán)</span>
+            <strong style="font-size:18px">@totalSaleValue.ToString("N0") đ</strong>
+            <small style="display:block;font-size:11.5px;color:#64748b;margin-top:2px">
+                Vốn gốc: @totalCostValue.ToString("N0") đ • Lãi dự kiến: <b style="color:@(totalPotentialProfit >= 0 ? "#15803d" : "#dc2626")">@(totalPotentialProfit >= 0 ? "+" : "")@totalPotentialProfit.ToString("N0") đ</b>
+            </small>
+        </div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon amber">⚠</div>
+        <div>
+            <span>Cần nhập / Cảnh báo</span>
+            <strong>@warningItems.Count</strong>
+        </div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon blue">◷</div>
+        <div>
+            <span>Đang lưu giỏ hàng</span>
+            <strong>@totalReserved.ToString("N0")</strong>
+        </div>
+    </article>
+</section>
+
+<!-- 5. DẢI CẢNH BÁO & GỢI Ý NHẬP KHO -->
+@if (warningItems.Count > 0)
+{
+    <section class="restock-banner">
+        <div class="restock-banner-head">
+            <h4>🔔 Gợi ý nhập kho ưu tiên (Dựa trên tồn kho thấp, giỏ hàng khách thêm nhiều & đơn đặt)</h4>
+            <span style="font-size:12px;color:#b45309">Có @warningItems.Count phân loại cần chú ý</span>
+        </div>
+        <div class="restock-chips">
+            @foreach (var w in warningItems.Take(5))
+            {
+                var wKey = $"{w.KhoId}_{w.BienTheId}";
+                var info = alertMap.TryGetValue(wKey, out var foundW)
+                    ? foundW
+                    : (Level: "ok", Tag: "Ổn định", Reason: "Tồn kho an toàn", InCart: 0, Sold: 0, SuggestedQty: 10);
+                <div class="restock-chip">
+                    <span class="sku-tag">@w.BienThe.Sku</span>
+                    <span><b>@w.BienThe.SanPham.TenSanPham</b> (@info.Tag • Giỏ: @info.InCart | Giữ: @w.SoLuongGiuCho)</span>
+                    <button type="button" onclick="quickPrefillImport(@w.KhoId, @w.BienTheId, @info.SuggestedQty)">
+                        + Nhập @info.SuggestedQty
+                    </button>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+<!-- 6. THANH TÌM KIẾM, LỌC & CHUYỂN CHẾ ĐỘ HIỂN THỊ -->
+<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px">
+    <form method="get" asp-action="Inventory" asp-controller="Management" class="management-toolbar" style="margin-bottom:0;flex:1">
+        <div class="filter-search">
+            ⌕ <input name="search" value="@ViewBag.Search" placeholder="Tìm mã SKU, mã SP, tên sản phẩm...">
+        </div>
+        <select name="khoId" onchange="this.form.submit()">
+            <option value="">Tất cả kho</option>
+            @foreach (var k in khos)
+            {
+                <option value="@k.Id" selected="@(selectedKho == k.Id)">@k.TenKho</option>
+            }
+        </select>
+        <select name="alertFilter" onchange="this.form.submit()">
+            <option value="">Tất cả trạng thái kho</option>
+            <option value="warning" selected="@(alertFilter == "warning")">Cần nhập kho (Tất cả cảnh báo)</option>
+            <option value="out" selected="@(alertFilter == "out")">Hết hàng</option>
+            <option value="low" selected="@(alertFilter == "low")">Sắp hết hàng</option>
+            <option value="demand" selected="@(alertFilter == "demand")">Nhu cầu cao (Giỏ hàng / Bán chạy)</option>
+            <option value="ok" selected="@(alertFilter == "ok")">Ổn định</option>
+        </select>
+    </form>
+
+    <div class="view-switch-group">
+        <button type="button" id="btn-view-matrix" class="view-switch-btn active" onclick="switchInvView('matrix')">
+            ⊞ Nhóm theo Sản phẩm (Size × Màu)
+        </button>
+        <button type="button" id="btn-view-table" class="view-switch-btn" onclick="switchInvView('table')">
+            ☰ Danh sách SKU phẳng
+        </button>
+    </div>
+</div>
+
+<!-- 7A. CHẾ ĐỘ XEM NHÓM THEO SẢN PHẨM & MA TRẬN SIZE × MÀU (MẶC ĐỊNH) -->
+<section id="inv-matrix-view">
+    @foreach (var grp in groupedByProduct)
+    {
+        var sp = grp.First().BienThe.SanPham;
+        var grpTon = grp.Sum(x => x.SoLuongTon);
+        var grpGiu = grp.Sum(x => x.SoLuongGiuCho);
+        var grpBan = grpTon - grpGiu;
+
+        <article class="inv-product-group">
+            <div class="inv-group-header">
+                <div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <strong style="font-size:15.5px;color:#0f172a">@sp.TenSanPham</strong>
+                        <span class="sku-tag">@sp.MaSanPham</span>
+                        <span style="font-size:12px;color:#64748b">(@grp.Count() phân loại)</span>
+                    </div>
+                </div>
+                <div class="inv-group-totals">
+                    <span class="tot-pill">Tổng tồn: <b>@grpTon</b></span>
+                    <span class="tot-pill">Đang lưu giỏ: <b>@grpGiu</b></span>
+                    <span class="tot-pill" style="border-color:#c7d2fe;background:#eef2ff;color:#3730a3">
+                        Có thể bán: <b>@grpBan</b>
+                    </span>
+                </div>
+            </div>
+
+            <div class="variant-matrix-grid">
+                @foreach (var t in grp)
+                {
+                    var key = $"{t.KhoId}_{t.BienTheId}";
+                    var coTheBan = t.SoLuongTon - t.SoLuongGiuCho;
+                    var info = alertMap.TryGetValue(key, out var foundInfo)
+                        ? foundInfo
+                        : (Level: "ok", Tag: "Ổn định", Reason: "Tồn kho an toàn", InCart: 0, Sold: 0, SuggestedQty: 10);
+
+                    var pillClass = info.Level switch
+                    {
+                        "out" => "alert-out",
+                        "low" => "alert-low",
+                        "demand" => "alert-demand",
+                        _ => "alert-ok"
+                    };
+
+                    var cardClass = info.Level == "out" ? "is-out" : (info.Level == "low" ? "is-low" : "");
+
+                    <div class="variant-card @cardClass">
+                        <div class="variant-card-top">
+                            <div>
+                                <div class="size-color-badge">
+                                    Size @t.BienThe.KichThuoc?.MaSize • @t.BienThe.MauSac?.TenMau
+                                </div>
+                                <div style="margin-top:3px"><span class="sku-tag">@t.BienThe.Sku</span></div>
+                            </div>
+                            <span class="alert-pill @pillClass">@info.Tag</span>
+                        </div>
+
+                        <div class="variant-metrics">
+                            <div>
+                                <span style="color:#64748b">Có thể bán:</span>
+                                <strong style="font-size:15px;color:@(coTheBan <= 5 ? "#dc2626" : "#0f172a")">@coTheBan</strong>
+                            </div>
+                            <div style="color:#64748b;font-size:12px">
+                                Tồn: <b>@t.SoLuongTon</b> | Giữ: <b>@t.SoLuongGiuCho</b>
+                            </div>
+                        </div>
+
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:6px">
+                            <small style="color:#64748b;font-size:11.5px">
+                                Giỏ: @info.InCart • Đã bán: @info.Sold • @t.Kho.TenKho
+                            </small>
+                            <div style="display:flex;gap:5px">
+                                <button type="button" class="act-btn act-import"
+                                        onclick="quickPrefillImport(@t.KhoId, @t.BienTheId, @info.SuggestedQty)">
+                                    ＋ Nhập
+                                </button>
+                                <button type="button" class="act-btn"
+                                        onclick="openAdjustModal(@t.KhoId, @t.BienTheId, '@t.BienThe.Sku', @t.SoLuongTon)">
+                                    Điều chỉnh
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        </article>
+    }
+</section>
+
+<!-- 7B. CHẾ ĐỘ BẢNG CHI TIẾT TỪNG SKU -->
+<section id="inv-table-view" class="panel table-panel" hidden>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Sản phẩm</th>
+                    <th>Mã SKU</th>
+                    <th>Tồn kho</th>
+                    <th>Đã giữ</th>
+                    <th>Có thể bán</th>
+                    <th>Cảnh báo / Nhắc nhập kho</th>
+                    <th>Kho</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var t in Model)
+                {
+                    var key = $"{t.KhoId}_{t.BienTheId}";
+                    var coTheBan = t.SoLuongTon - t.SoLuongGiuCho;
+                    var info = alertMap.TryGetValue(key, out var foundInfo)
+                        ? foundInfo
+                        : (Level: "ok", Tag: "Ổn định", Reason: "Tồn kho an toàn", InCart: 0, Sold: 0, SuggestedQty: 10);
+
+                    var pillClass = info.Level switch
+                    {
+                        "out" => "alert-out",
+                        "low" => "alert-low",
+                        "demand" => "alert-demand",
+                        _ => "alert-ok"
+                    };
+
+                    <tr>
+                        <td>
+                            <strong>@t.BienThe.SanPham.TenSanPham (@t.BienThe.KichThuoc?.MaSize - @t.BienThe.MauSac?.TenMau)</strong>
+                            <div style="font-size:12px;color:#64748b">Đang trong giỏ khách: @info.InCart • Đã đặt mua: @info.Sold</div>
+                        </td>
+                        <td><span class="sku-tag">@t.BienThe.Sku</span></td>
+                        <td><strong>@t.SoLuongTon</strong></td>
+                        <td>@t.SoLuongGiuCho</td>
+                        <td><strong style="color:@(coTheBan <= 5 ? "#dc2626" : "#0f172a")">@coTheBan</strong></td>
+                        <td>
+                            <span class="alert-pill @pillClass">@info.Tag</span>
+                            @if (info.Level != "ok")
+                            {
+                                <div style="font-size:11.5px;color:#64748b;margin-top:3px">@info.Reason (Gợi ý +@info.SuggestedQty)</div>
+                            }
+                        </td>
+                        <td>@t.Kho.TenKho</td>
+                        <td>
+                            <div style="display:flex;gap:6px">
+                                <button type="button" class="act-btn act-import"
+                                        onclick="quickPrefillImport(@t.KhoId, @t.BienTheId, @info.SuggestedQty)">
+                                    ＋ Nhập
+                                </button>
+                                <button type="button" class="act-btn"
+                                        onclick="openAdjustModal(@t.KhoId, @t.BienTheId, '@t.BienThe.Sku', @t.SoLuongTon)">
+                                    Điều chỉnh
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="table-footer"><span>Tổng cộng @Model.Count phân loại hàng trong kho</span></div>
+</section>
+
+<script>
+    const MAX_EXCEL_BYTES = 5 * 1024 * 1024; // 5 MB
+
+    function switchInvView(mode) {
+        const isMatrix = mode === 'matrix';
+        document.getElementById('inv-matrix-view').hidden = !isMatrix;
+        document.getElementById('inv-table-view').hidden = isMatrix;
+        document.getElementById('btn-view-matrix').classList.toggle('active', isMatrix);
+        document.getElementById('btn-view-table').classList.toggle('active', !isMatrix);
+    }
+
+    function closeAllInvBoxes() {
+        ['quick-import-box', 'excel-import-box', 'adjust-stock-box'].forEach(id => {
+            document.getElementById(id)?.setAttribute('hidden', '');
+        });
+    }
+
+    function openInvBox(boxId) {
+        const box = document.getElementById(boxId);
+        const isHidden = box.hasAttribute('hidden');
+        closeAllInvBoxes();
+        if (isHidden) {
+            box.removeAttribute('hidden');
+            box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+
+    function quickPrefillImport(khoId, bienTheId, suggestedQty) {
+        closeAllInvBoxes();
+        document.getElementById('imp-kho-id').value = khoId;
+        document.getElementById('imp-bienthe-id').value = bienTheId;
+        document.getElementById('imp-qty').value = suggestedQty || 10;
+        const box = document.getElementById('quick-import-box');
+        box.removeAttribute('hidden');
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function openAdjustModal(khoId, bienTheId, sku, currentQty) {
+        closeAllInvBoxes();
+        document.getElementById('adj-kho-id').value = khoId;
+        document.getElementById('adj-bienthe-id').value = bienTheId;
+        document.getElementById('adj-sku-title').textContent = sku;
+        document.getElementById('adj-qty').value = currentQty;
+        const box = document.getElementById('adjust-stock-box');
+        box.removeAttribute('hidden');
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+    }
+
+    function handleExcelFileChange(file) {
+        const errEl = document.getElementById('excel-client-error');
+        const previewEl = document.getElementById('excel-selected-bar');
+        const inputEl = document.getElementById('excel-file-input');
+
+        errEl.hidden = true;
+        previewEl.hidden = true;
+
+        if (!file) return;
+
+        const nameLower = file.name.toLowerCase();
+        if (!nameLower.endsWith('.xlsx') && !nameLower.endsWith('.csv')) {
+            errEl.textContent = '⚠ Chỉ chấp nhận file định dạng Excel (.xlsx) hoặc (.csv).';
+            errEl.hidden = false;
+            inputEl.value = '';
+            return;
+        }
+
+        if (file.size > MAX_EXCEL_BYTES) {
+            errEl.textContent = `⚠ Dung lượng file quá lớn (${formatFileSize(file.size)}). Vui lòng chọn file không quá 5 MB.`;
+            errEl.hidden = false;
+            inputEl.value = '';
+            return;
+        }
+
+        document.getElementById('excel-file-name').textContent = file.name;
+        document.getElementById('excel-file-size').textContent = formatFileSize(file.size);
+        previewEl.hidden = false;
+    }
+
+    function clearExcelFile() {
+        document.getElementById('excel-file-input').value = '';
+        document.getElementById('excel-selected-bar').hidden = true;
+        document.getElementById('excel-client-error').hidden = true;
+    }
+
+    // Hỗ trợ kéo thả file trực tiếp vào vùng dropzone
+    const dropzone = document.getElementById('excel-dropzone');
+    if (dropzone) {
+        ['dragenter', 'dragover'].forEach(evtName => {
+            dropzone.addEventListener(evtName, e => {
+                e.preventDefault();
+                dropzone.classList.add('is-dragover');
+            });
+        });
+        ['dragleave', 'drop'].forEach(evtName => {
+            dropzone.addEventListener(evtName, e => {
+                e.preventDefault();
+                dropzone.classList.remove('is-dragover');
+            });
+        });
+        dropzone.addEventListener('drop', e => {
+            const files = e.dataTransfer?.files;
+            if (files && files.length > 0) {
+                const inputEl = document.getElementById('excel-file-input');
+                inputEl.files = files;
+                handleExcelFileChange(files[0]);
+            }
+        });
+    }
+</script>

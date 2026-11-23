@@ -1,4 +1,234 @@
-@{ ViewData["Title"]="Đơn đặt hàng"; }
-<div class="page-heading"><div><p class="eyebrow">BÁN HÀNG</p><h1>Đơn đặt hàng</h1></div><button class="primary-button">＋ Tạo đơn hàng</button></div>
-<div class="stats-grid people-stats"><article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Chờ xử lý</p><strong>8</strong></div></article><article class="stat-card"><div class="stat-icon blue">▻</div><div><p>Đang giao</p><strong>12</strong></div></article><article class="stat-card"><div class="stat-icon green">✓</div><div><p>Hoàn tất</p><strong>64</strong></div></article><article class="stat-card"><div class="stat-icon violet">◆</div><div><p>Tổng đơn tháng</p><strong>96</strong></div></article></div>
-<section class="panel table-panel"><div class="management-toolbar"><div class="filter-search">⌕ <input placeholder="Tìm mã đơn, khách hàng..."></div><select><option>Tất cả trạng thái</option><option>Chờ xử lý</option><option>Đang giao</option></select></div><div class="table-wrap"><table><thead><tr><th>Mã đơn</th><th>Khách hàng</th><th>Ngày đặt</th><th>Tổng tiền</th><th>Thanh toán</th><th>Trạng thái</th><th></th></tr></thead><tbody>@foreach(var o in new[]{("DH-26011","Nguyễn Minh Anh","19/11/2026","1.450.000 đ","Đã thanh toán","Hoàn tất"),("DH-26010","Trần Quốc Bảo","19/11/2026","890.000 đ","COD","Đang giao"),("DH-26009","Lê Thu Hà","18/11/2026","2.240.000 đ","Đã thanh toán","Chờ xử lý"),("DH-26008","Phạm Văn Nam","18/11/2026","720.000 đ","COD","Đang giao")}){<tr><td><strong>@o.Item1</strong></td><td>@o.Item2</td><td>@o.Item3</td><td>@o.Item4</td><td>@o.Item5</td><td><select class="status-select order-status" data-current="@o.Item6"><option>Chờ xử lý</option><option>Đang xử lý</option><option>Đang giao</option><option>Hoàn tất</option><option>Đã hủy</option></select></td><td><button type="button" class="icon-button status-save">Lưu</button></td></tr>}</tbody></table></div></section>
+@model List<ShopProject.Models.Entities.DonHang>
+@{
+    ViewData["Title"] = "Đơn đặt hàng";
+    var selectedStatus = ViewBag.Status as string ?? "";
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">BÁN HÀNG</p>
+        <h1>Đơn đặt hàng</h1>
+    </div>
+</div>
+<style>
+    .order-code-link {
+        display: inline-block;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #4f46e5;
+        background: #f5f3ff;
+        border: 1px solid #e0e7ff;
+        padding: 4px 8px;
+        border-radius: 6px;
+        text-decoration: none;
+        transition: all 0.15s ease;
+    }
+    .order-code-link:hover {
+        background: #eef2ff;
+        border-color: #c7d2fe;
+        color: #3730a3;
+    }
+    .customer-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .customer-cell strong {
+        color: #0f172a;
+        font-size: 13.5px;
+        font-weight: 600;
+    }
+    .customer-cell span {
+        color: #64748b;
+        font-size: 12.5px;
+    }
+    .pay-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 9px;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 600;
+        background: #f1f5f9;
+        color: #334155;
+        border: 1px solid #e2e8f0;
+    }
+    .status-form-inline {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0;
+    }
+    .status-form-inline .status-select {
+        height: 30px;
+        padding: 0 26px 0 10px;
+        border-radius: 7px;
+        font-size: 12.5px;
+        font-weight: 500;
+        cursor: pointer;
+    }
+    .status-form-inline .status-select option {
+        background: #ffffff;
+        color: #0f172a;
+    }
+    .act-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 30px;
+        padding: 0 11px;
+        border-radius: 7px;
+        font-size: 12.5px;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+        text-decoration: none;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
+        color: #334155;
+    }
+    .act-btn:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #0f172a;
+    }
+    .act-save {
+        color: #4f46e5;
+        border-color: #c7d2fe;
+        background: #eef2ff;
+    }
+    .act-save:hover {
+        background: #e0e7ff;
+        border-color: #a5b4fc;
+        color: #3730a3;
+    }
+    .table-wrap td a.btn-invoice,
+    a.btn-invoice {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        height: 30px;
+        padding: 0 12px;
+        border-radius: 7px;
+        font-size: 12.5px;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+        text-decoration: none !important;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        border: 1px solid #cbd5e1;
+        background: #ffffff;
+        color: #1e293b !important;
+        box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .table-wrap td a.btn-invoice:hover,
+    a.btn-invoice:hover {
+        background: #f8fafc;
+        border-color: #4f46e5;
+        color: #4f46e5 !important;
+        box-shadow: 0 2px 4px rgba(79, 70, 229, 0.1);
+    }
+</style>
+@if (TempData["OrderSuccess"] != null)
+{
+    <p style="color:#15803d;margin-bottom:12px">@TempData["OrderSuccess"]</p>
+}
+@if (TempData["OrderError"] != null)
+{
+    <p style="color:#b91c1c;margin-bottom:12px">@TempData["OrderError"]</p>
+}
+
+<div class="stats-grid people-stats">
+    <article class="stat-card">
+        <div class="stat-icon amber">◷</div>
+        <div><p>Chờ xử lý</p><strong>@ViewBag.PendingCount</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon blue">▻</div>
+        <div><p>Đang giao</p><strong>@ViewBag.ShippingCount</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon green">✓</div>
+        <div><p>Hoàn tất</p><strong>@ViewBag.CompletedCount</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon violet">◆</div>
+        <div><p>Tổng đơn tháng</p><strong>@ViewBag.MonthCount</strong></div>
+    </article>
+</div>
+
+<section class="panel table-panel">
+    <form method="get" asp-action="Orders" asp-controller="Management" class="management-toolbar">
+        <div class="filter-search">
+            ⌕ <input name="search" value="@ViewBag.Search" placeholder="Tìm mã đơn, khách hàng, SĐT...">
+        </div>
+        <select name="status" onchange="this.form.submit()">
+            <option value="">Tất cả trạng thái</option>
+            <option value="Cho_xac_nhan" selected="@(selectedStatus == "Cho_xac_nhan")">Chờ xác nhận</option>
+            <option value="Da_xac_nhan" selected="@(selectedStatus == "Da_xac_nhan")">Đã xác nhận</option>
+            <option value="Dang_giao" selected="@(selectedStatus == "Dang_giao")">Đang giao</option>
+            <option value="Da_giao" selected="@(selectedStatus == "Da_giao")">Hoàn tất</option>
+            <option value="Da_huy" selected="@(selectedStatus == "Da_huy")">Đã hủy</option>
+        </select>
+    </form>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Mã đơn</th>
+                    <th>Khách hàng</th>
+                    <th>Ngày đặt</th>
+                    <th>Tổng tiền</th>
+                    <th>Thanh toán</th>
+                    <th>Trạng thái</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var o in Model)
+                {
+                    <tr>
+                        <td>
+                            <a href="/Shop/Invoice/@o.MaDonHang" target="_blank" class="order-code-link">@o.MaDonHang</a>
+                        </td>
+                         <td>
+                            <div class="customer-cell">
+                                <strong>@o.TenNguoiNhan</strong>
+                                <span>@o.DienThoaiNhan</span>
+                            </div>
+                        </td>                       
+                        <td>@o.ThoiGianTao.ToString("dd/MM/yyyy HH:mm")</td>
+                        <td>@o.TongThanhToan.ToString("N0") đ</td>
+                        <td><span class="pay-badge">@(o.TrangThaiThanhToan == "Da_thanh_toan" ? "Đã thanh toán" : o.PhuongThucThanhToan)</span></td>
+                        
+                        <td>
+                            <form method="post" asp-action="UpdateOrderStatus" asp-controller="Management" class="status-form-inline">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@o.Id" />
+                                <select name="trangThai" class="status-select" data-current="@o.TrangThai">
+                                    <option value="Cho_xac_nhan">Chờ xác nhận</option>
+                                    <option value="Da_xac_nhan">Đã xác nhận</option>
+                                    <option value="Dang_giao">Đang giao</option>
+                                    <option value="Da_giao">Hoàn tất</option>
+                                    <option value="Da_huy">Đã hủy</option>
+                                </select>
+                                <button type="submit" class="act-btn act-save">Lưu</button>
+                            </form>
+                        </td>
+                        <td>
+                            <a href="/Shop/Invoice/@o.MaDonHang" target="_blank" class="btn-invoice">
+                                <span>▤</span> Xem hóa đơn
+                            </a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="table-footer"><span>Tổng cộng @Model.Count đơn hàng</span></div>
+</section>

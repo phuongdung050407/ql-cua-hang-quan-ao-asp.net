@@ -1,4 +1,104 @@
-@{ ViewData["Title"]="Khuyến mãi"; }
-<div class="page-heading"><div><p class="eyebrow">MARKETING</p><h1>Khuyến mãi</h1></div><button class="primary-button">＋ Tạo khuyến mãi</button></div>
-<div class="stats-grid people-stats"><article class="stat-card"><div class="stat-icon violet">%</div><div><p>Đang hoạt động</p><strong>5</strong></div></article><article class="stat-card"><div class="stat-icon blue">▣</div><div><p>Đã sử dụng</p><strong>328</strong></div></article><article class="stat-card"><div class="stat-icon green">↗</div><div><p>Doanh thu</p><strong>48 tr</strong></div></article><article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Sắp kết thúc</p><strong>2</strong></div></article></div>
-<section class="promotion-grid"><article class="promotion-card"><div class="promo-top"><span>GIẢM GIÁ</span><em>Đang chạy</em></div><h2>Ưu đãi tháng mới</h2><strong>20% OFF</strong><p>Mã: <b>NEWYEAR20</b></p><div><span>01/11 - 30/11</span><button>Chi tiết</button></div></article><article class="promotion-card"><div class="promo-top"><span>MUA 2 GIẢM</span><em>Đang chạy</em></div><h2>Combo mùa đông</h2><strong>GIẢM 150K</strong><p>Mã: <b>WINTER150</b></p><div><span>15/11 - 15/12</span><button>Chi tiết</button></div></article><article class="promotion-card"><div class="promo-top"><span>MIỄN PHÍ SHIP</span><em>Sắp diễn ra</em></div><h2>Giao hàng ưu đãi</h2><strong>FREESHIP</strong><p>Mã: <b>SHIP0D</b></p><div><span>20/11 - 25/11</span><button>Chi tiết</button></div></article></section>
+@model List<PromotionViewModel>
+@{
+    ViewData["Title"] = "Khuyến mãi";
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">MARKETING</p>
+        <h1>Khuyến mãi</h1>
+    </div>
+    <button type="button" class="primary-button" onclick="document.getElementById('add-promo-box').toggleAttribute('hidden')">＋ Tạo khuyến mãi</button>
+</div>
+
+@if (TempData["PromoSuccess"] != null)
+{
+    <p style="color:#15803d;margin-bottom:12px">@TempData["PromoSuccess"]</p>
+}
+@if (TempData["PromoError"] != null)
+{
+    <p style="color:#b91c1c;margin-bottom:12px">@TempData["PromoError"]</p>
+}
+
+<section id="add-promo-box" class="panel" hidden style="margin-bottom:20px;padding:18px">
+    <h3 style="margin-bottom:12px">Tạo mã giảm giá mới</h3>
+    <form method="post" asp-action="CreatePromotion" asp-controller="Management" class="form-grid-admin">
+        @Html.AntiForgeryToken()
+        <label>Mã Voucher<input name="maVoucher" required placeholder="SALE20" /></label>
+        <label>Tên / Mô tả chương trình<input name="moTa" placeholder="Ưu đãi cuối năm" /></label>
+        <label>Loại giảm
+            <select name="loaiGiam">
+                <option value="Phan_tram">Phần trăm (%)</option>
+                <option value="Tien_mat">Tiền mặt (VNĐ)</option>
+            </select>
+        </label>
+        <label>Giá trị giảm<input type="number" name="giaTri" min="1" required placeholder="20 hoặc 50000" /></label>
+        <label>Đơn tối thiểu (VNĐ)<input type="number" name="donToiThieu" value="0" min="0" /></label>
+        <label>Số lượng phát hành<input type="number" name="soLuongPhatHanh" value="50" min="1" required /></label>
+        <label>Ngày bắt đầu<input type="date" name="ngayBatDau" value="@DateTime.Today.ToString("yyyy-MM-dd")" required /></label>
+        <label>Ngày kết thúc<input type="date" name="ngayKetThuc" value="@DateTime.Today.AddDays(30).ToString("yyyy-MM-dd")" required /></label>
+        <div class="full"><button type="submit" class="primary-button">Lưu mã khuyến mãi</button></div>
+    </form>
+</section>
+
+<div class="stats-grid people-stats">
+    <article class="stat-card">
+        <div class="stat-icon violet">%</div>
+        <div><p>Đang hoạt động</p><strong>@ViewBag.ActiveCount</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon blue">▣</div>
+        <div><p>Lượt đã sử dụng</p><strong>@ViewBag.UsedCount</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon green">↗</div>
+        <div><p>Tổng chương trình</p><strong>@Model.Count</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon amber">◷</div>
+        <div><p>Sắp kết thúc</p><strong>@ViewBag.EndingSoonCount</strong></div>
+    </article>
+</div>
+
+<section class="promotion-grid">
+    @foreach (var p in Model)
+    {
+        <article class="promotion-card">
+            <div class="promo-top"><span>VOUCHER</span><em>@p.Status</em></div>
+            <h2>@p.Name</h2>
+            <strong>@p.Discount</strong>
+            <p>Mã: <b>@p.Code</b></p>
+            <div>
+                <span>@p.Period</span>
+                <form method="post" asp-action="TogglePromotion" asp-controller="Management" style="display:inline">
+                    @Html.AntiForgeryToken()
+                    <input type="hidden" name="id" value="@p.Id" />
+                    <button type="submit">@(p.Status == "Tạm dừng" ? "Kích hoạt" : "Tạm dừng")</button>
+                </form>
+            </div>
+        </article>
+    }
+</section>
+
+<script>
+    window.addEventListener('DOMContentLoaded', () => {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('prefillCode');
+        const discount = params.get('prefillDiscount');
+        const name = params.get('prefillName');
+
+        if (code || discount) {
+            // Mở khung tạo mã khuyến mãi nếu đang ẩn
+            document.querySelectorAll('section[hidden], div[hidden]').forEach(el => {
+                if (el.querySelector('form')) el.removeAttribute('hidden');
+            });
+
+            const codeInput = document.querySelector('input[name*="Ma"], input[name*="Code"], input[placeholder*="SALE"]');
+            const nameInput = document.querySelector('input[name*="Ten"], input[name*="Name"]');
+            const valInput = document.querySelector('input[name*="GiaTri"], input[name*="PhanTram"], input[name*="Discount"]');
+
+            if (codeInput && code) codeInput.value = code;
+            if (nameInput && name) nameInput.value = name;
+            if (valInput && discount) valInput.value = discount;
+        }
+    });
+</script>
