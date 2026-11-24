@@ -4,65 +4,123 @@
     ViewData["Title"] = "Thanh toán";
 }
 
-<main class="checkout-page">
-    <div class="checkout-title">
-        <span class="eyebrow">THANH TOÁN AN TOÀN</span>
-        <h1>Thông tin đặt hàng</h1>
+<main class="checkout-page checkout-v2">
+    <div class="commerce-back-link">
+        <a asp-controller="Shop" asp-action="Cart"><span aria-hidden="true">←</span> Quay lại giỏ hàng</a>
+        <span>THANH TOÁN AN TOÀN <b aria-hidden="true">◇</b></span>
     </div>
 
-    <div class="checkout-layout">
-        <form class="checkout-form" id="checkout-form">
-            <h2>Thông tin giao hàng</h2>
-            <div class="form-grid">
-                <label>Họ và tên<input name="fullName" required placeholder="Nguyễn Văn An" /></label>
-                <label>Số điện thoại<input name="phone" required placeholder="0912 345 678" /></label>
-                <label class="full">Email<input name="email" type="email" required placeholder="email@example.com" /></label>
-                <label class="full">Địa chỉ<input name="address" required placeholder="Số nhà, tên đường" /></label>
-                <label>
-                    Tỉnh / Thành phố
-                    <select name="province">
-                        <option>TP. Hồ Chí Minh</option>
-                        <option>Hà Nội</option>
-                        <option>An Giang</option>
-                    </select>
-                </label>
-                <label>
-                    Quận / Huyện
-                    <select name="district">
-                        <option>Quận 1</option>
-                        <option>Quận 3</option>
-                        <option>TP. Long Xuyên</option>
-                    </select>
-                </label>
-                <label class="full">Ghi chú<textarea name="note" placeholder="Ghi chú cho đơn hàng"></textarea></label>
-            </div>
+    <header class="commerce-heading checkout-heading-v2">
+        <div>
+            <p class="commerce-kicker">FASHIONHUB <span>/</span> CHECKOUT</p>
+            <h1>Hoàn tất <em>đơn hàng</em></h1>
+            <p class="commerce-intro">Chỉ còn một bước nữa để món đồ yêu thích về với bạn.</p>
+        </div>
+        <div class="checkout-trust-mark"><span>✓</span><div><strong>Thanh toán an toàn</strong><small>Bảo vệ thông tin của bạn</small></div></div>
+    </header>
 
-            <h2>Phương thức thanh toán</h2>
-            <label class="payment-option selected">
-                <input type="radio" name="payment" value="COD" checked />
-                <b>Thanh toán khi nhận hàng (COD)</b>
-            </label>
-            <label class="payment-option">
-                <input type="radio" name="payment" value="Bank" />
-                <b>Chuyển khoản ngân hàng</b>
-            </label>
+    <nav class="commerce-progress" aria-label="Tiến trình mua hàng">
+        <a class="commerce-step commerce-step-done" asp-controller="Shop" asp-action="Cart"><span>✓</span><strong>Giỏ hàng</strong></a>
+        <i></i>
+        <div class="commerce-step commerce-step-active" aria-current="step"><span>02</span><strong>Giao hàng</strong></div>
+        <i></i>
+        <div class="commerce-step"><span>03</span><strong>Hoàn tất</strong></div>
+    </nav>
+
+    @if (TempData["CartError"] != null)
+    {
+        <div class="cart-notice" role="alert">@TempData["CartError"]</div>
+    }
+
+    <div class="checkout-layout checkout-layout-v2">
+        <form class="checkout-form checkout-form-v2" id="place-order-form" method="post" asp-controller="Shop" asp-action="PlaceOrder">
+            @Html.AntiForgeryToken()
+            <section class="checkout-section">
+                <header class="checkout-section-heading">
+                    <span class="checkout-section-number">01</span>
+                    <div><h2>Thông tin giao hàng</h2><p>Địa chỉ để chúng tôi giao đơn hàng đến bạn.</p></div>
+                </header>
+                <div class="form-grid checkout-fields">
+                    <label>
+                        Họ và tên
+                        <input name="fullName" required maxlength="150" value="@User.Identity?.Name" placeholder="Nguyễn Văn An" autocomplete="name" />
+                    </label>
+                    <label>
+                        Số điện thoại
+                        <input name="phone" required maxlength="20" type="tel" placeholder="0912 345 678" autocomplete="tel" />
+                    </label>
+                    <label class="full">
+                        Email
+                        <input name="email" type="email" required value="@User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value" placeholder="email@example.com" autocomplete="email" />
+                    </label>
+                    <label class="full">
+                        Địa chỉ
+                        <input name="address" required maxlength="300" placeholder="Số nhà, tên đường, phường / xã" autocomplete="street-address" />
+                    </label>
+                    <label>
+                        Tỉnh / Thành phố
+                        <select name="province" required>
+                            <option value="TP. Hồ Chí Minh">TP. Hồ Chí Minh</option>
+                            <option value="Hà Nội">Hà Nội</option>
+                            <option value="An Giang">An Giang</option>
+                        </select>
+                    </label>
+                    <label>
+                        Quận / Huyện
+                        <select name="district" required>
+                            <option value="Quận 1">Quận 1</option>
+                            <option value="Quận 3">Quận 3</option>
+                            <option value="TP. Long Xuyên">TP. Long Xuyên</option>
+                        </select>
+                    </label>
+                    <label class="full">
+                        Ghi chú <span class="optional-label">Không bắt buộc</span>
+                        <textarea name="note" maxlength="500" rows="3" placeholder="Lưu ý khi giao hàng, thời gian nhận hàng..."></textarea>
+                    </label>
+                </div>
+            </section>
+
+            <section class="checkout-section payment-section-v2">
+                <header class="checkout-section-heading">
+                    <span class="checkout-section-number">02</span>
+                    <div><h2>Phương thức thanh toán</h2><p>Chọn cách thanh toán phù hợp với bạn.</p></div>
+                </header>
+                <label class="payment-option payment-option-v2 selected">
+                    <input type="radio" name="payment" value="COD" checked />
+                    <span class="payment-option-icon">▣</span>
+                    <span class="payment-option-copy"><b>Thanh toán khi nhận hàng</b><small>Thanh toán tiền mặt sau khi kiểm tra sản phẩm</small></span>
+                    <span class="payment-radio" aria-hidden="true"></span>
+                </label>
+                <label class="payment-option payment-option-v2">
+                    <input type="radio" name="payment" value="Bank" />
+                    <span class="payment-option-icon">⌁</span>
+                    <span class="payment-option-copy"><b>Chuyển khoản ngân hàng</b><small>Thông tin chuyển khoản được gửi sau khi đặt hàng</small></span>
+                    <span class="payment-radio" aria-hidden="true"></span>
+                </label>
+            </section>
+
+            <div class="checkout-privacy-note"><span>◇</span><p>Thông tin cá nhân của bạn chỉ được sử dụng để xử lý và giao đơn hàng.</p></div>
         </form>
 
-        <aside class="order-summary">
-            <h2>Đơn hàng</h2>
-            @foreach (var p in Model)
-            {
-                <div class="summary-product">
-                    <img src="@p.Image" alt="@p.Name" />
-                    <div><strong>@p.Name</strong><small>Số lượng: 1</small></div>
-                    <b>@p.Price.ToString("N0") đ</b>
-                </div>
-            }
-            <div class="total"><span>Tổng thanh toán</span><strong>@Model.Sum(x => x.Price).ToString("N0") đ</strong></div>
-            <form method="post" asp-controller="Shop" asp-action="PlaceOrder" id="place-order-form">
-                @Html.AntiForgeryToken()
-                <button type="submit" class="checkout-button" id="place-order-button">Đặt hàng</button>
-            </form>
+        <aside class="order-summary checkout-summary-v2">
+            <div class="summary-overline"><span>ORDER SUMMARY</span><span class="summary-lock">● SECURE</span></div>
+            <h2>Đơn hàng của bạn</h2>
+            <div id="checkoutProducts" class="checkout-products-list"></div>
+            <div class="checkout-summary-lines">
+                <div><span>Tạm tính</span><strong id="checkoutSubtotal">0 đ</strong></div>
+                <div><span>Vận chuyển</span><strong class="shipping-free">Miễn phí</strong></div>
+                <div><span>Ưu đãi</span><strong id="checkoutDiscount">0 đ</strong></div>
+            </div>
+            <div class="summary-grand-total checkout-grand-total">
+                <span>Tổng thanh toán</span>
+                <strong id="checkoutTotal">0 đ</strong>
+                <small>Đã bao gồm thuế VAT</small>
+            </div>
+            <button type="submit" form="place-order-form" class="checkout-button cart-checkout-cta" id="place-order-button">
+                <span>Xác nhận đặt hàng</span><b aria-hidden="true">→</b>
+            </button>
+            <a class="checkout-edit-link" asp-controller="Shop" asp-action="Cart">← Chỉnh sửa giỏ hàng</a>
+            <p class="summary-safe-note"><span aria-hidden="true">✓</span> Mã hóa bảo mật thông tin thanh toán</p>
         </aside>
     </div>
 </main>

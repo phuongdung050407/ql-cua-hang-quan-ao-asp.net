@@ -74,7 +74,51 @@
     </div>
 </section>
 
-<!-- 3. DANH MỤC NỔI BẬT -->
+<!-- 3. GỢI Ý SẢN PHẨM -->
+@if (Model.Recommendations.Any())
+{
+    <section id="goi-y-cho-ban" class="home-recommendations container">
+        <div class="section-header">
+            <div>
+                <span class="sec-sub">@(User.Identity?.IsAuthenticated == true ? "DỰA TRÊN LỰA CHỌN CỦA BẠN" : "FASHIONHUB TUYỂN CHỌN")</span>
+                <h2>Gợi ý sản phẩm</h2>
+            </div>
+            <a asp-controller="Shop" asp-action="Recommendations" class="recommendations-more-link">Xem tất cả <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="row g-4">
+            @foreach (var item in Model.Recommendations)
+            {
+                <div class="col-6 col-md-4 col-lg-3">
+                    <article class="product-card">
+                        <div class="product-thumb">
+                            <a asp-controller="Shop" asp-action="Detail" asp-route-id="@item.Id">
+                                <img src="@item.Image" alt="@item.Name" loading="lazy" />
+                            </a>
+                            <span class="product-tag">@item.Category</span>
+                            <div class="product-overlay">
+                                <a asp-controller="Shop" asp-action="Detail" asp-route-id="@item.Id" class="btn-quick-view">Xem chi tiết</a>
+                                <button type="button" class="btn-quick-add" data-add-cart="@item.Id" data-variant-id="@item.VariantId"
+                                        data-variant-label="@item.VariantLabel" data-stock="@item.Stock" data-name="@item.Name" data-price="@item.Price"
+                                        data-image="@item.Image" data-category="@item.Category" disabled="@(item.VariantId == null || item.Stock < 1)">
+                                    @(item.Stock > 0 ? "+ Thêm giỏ" : "Tạm hết hàng")
+                                </button>
+                            </div>
+                        </div>
+                        <div class="product-info">
+                            <a asp-controller="Shop" asp-action="Detail" asp-route-id="@item.Id" class="product-title" title="@item.Name">@item.Name</a>
+                            <div class="product-bottom">
+                                <strong class="product-price">@item.Price.ToString("N0") đ</strong>
+                                <span class="product-stock">@item.Status</span>
+                            </div>
+                        </div>
+                    </article>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+<!-- 4. DANH MỤC NỔI BẬT -->
 <section class="category-section container">
     <div class="section-header">
         <div>
@@ -106,7 +150,7 @@
     </div>
 </section>
 
-<!-- 4. LƯỚI SẢN PHẨM -->
+<!-- 5. LƯỚI SẢN PHẨM -->
 <section id="san-pham-noi-bat" class="products-section container">
     <div class="section-header">
         <div>
@@ -151,9 +195,10 @@
                             <span class="product-tag">@item.Category</span>
                             <div class="product-overlay">
                                 <a asp-controller="Shop" asp-action="Detail" asp-route-id="@item.Id" class="btn-quick-view">Xem chi tiết</a>
-                                <button type="button" class="btn-quick-add"
-                                        onclick="quickAddToCart('@item.Id', '@item.Name.Replace("'", "\\'")', @item.Price, '@item.Image')">
-                                    + Thêm giỏ
+                                <button type="button" class="btn-quick-add" data-add-cart="@item.Id" data-variant-id="@item.VariantId"
+                                        data-variant-label="@item.VariantLabel" data-stock="@item.Stock" data-name="@item.Name" data-price="@item.Price"
+                                        data-image="@item.Image" data-category="@item.Category" disabled="@(item.VariantId == null || item.Stock < 1)">
+                                    @(item.Stock > 0 ? "+ Thêm giỏ" : "Tạm hết hàng")
                                 </button>
                             </div>
                         </div>
@@ -173,13 +218,13 @@
     }
 </section>
 
-<!-- 5. BANNER LOOKBOOK / ƯU ĐÃI GIỮA TRANG -->
+<!-- 6. BANNER LOOKBOOK / ƯU ĐÃI GIỮA TRANG -->
 <section class="promo-banner-section container">
     <div class="promo-box">
         <div>
             <span class="promo-badge">ƯU ĐÃI THÀNH VIÊN</span>
-            <h3>Đăng ký tài khoản ngay hôm nay để lưu lịch sử đơn hàng & nhận gợi ý phối đồ riêng</h3>
-            <p>Trải nghiệm mua sắm nhanh chóng, theo dõi trạng thái giao hàng theo thời gian thực.</p>
+            <h3>Tạo tài khoản để nhận gợi ý phối đồ hợp gu và ưu đãi riêng</h3>
+            <p>Giỏ hàng được đồng bộ theo tài khoản để bạn dễ dàng tiếp tục mua sắm khi quay lại.</p>
         </div>
         <div class="promo-actions">
             <a asp-controller="Shop" asp-action="Register" class="btn-light-solid">Tạo tài khoản miễn phí</a>
@@ -188,30 +233,5 @@
 </section>
 
 @section Scripts {
-    <script>
-        function quickAddToCart(id, name, price, image) {
-            const key = 'fashionhub_cart';
-            let cart = [];
-            try {
-                cart = JSON.parse(localStorage.getItem(key) || '[]');
-            } catch (e) { cart = []; }
-
-            const existing = cart.find(x => String(x.id) === String(id));
-            if (existing) {
-                existing.quantity = (Number(existing.quantity) || 1) + 1;
-            } else {
-                cart.push({ id: String(id), name: name, price: Number(price), image: image, quantity: 1 });
-            }
-            localStorage.setItem(key, JSON.stringify(cart));
-            localStorage.setItem('cart', JSON.stringify(cart));
-            if (typeof updateHeaderCartBadge === 'function') updateHeaderCartBadge();
-
-            // Thông báo nhỏ góc màn hình
-            const toast = document.createElement('div');
-            toast.className = 'cart-toast';
-            toast.innerHTML = `✓ Đã thêm <strong>${name}</strong> vào giỏ hàng`;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 2500);
-        }
-    </script>
+    <script src="~/js/site.js" asp-append-version="true"></script>
 }

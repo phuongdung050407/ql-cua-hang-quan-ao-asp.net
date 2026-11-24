@@ -19,7 +19,18 @@
         </div>
         <div class="success-actions">
             <a asp-controller="Shop" asp-action="Invoice" asp-route-id="@ViewBag.OrderCode" class="checkout-button">Xem hóa đơn</a>
+            <a asp-controller="Shop" asp-action="MyOrders" class="secondary-store-button">Lịch sử mua hàng</a>
             <a asp-controller="Shop" asp-action="Index" class="secondary-store-button">Về trang chủ</a>
         </div>
     </section>
 </main>
+
+@section Scripts {
+    <script>
+        localStorage.removeItem('fashionhub_cart');
+        localStorage.removeItem('fashionhub-cart');
+        localStorage.removeItem('cart');
+        sessionStorage.removeItem('fashionhub-coupon');
+        if (typeof updateHeaderCartBadge === 'function') updateHeaderCartBadge();
+    </script>
+}

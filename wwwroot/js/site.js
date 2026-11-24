@@ -2,49 +2,201 @@
 // for details on configuring this project to bundle and minify static web assets.
 
 // Write your JavaScript code.
+const cartKey = 'fashionhub_cart';
+const wishlistKey = 'fashionhub-wishlist';
+const money = value => `${Math.max(0, Number(value) || 0).toLocaleString('vi-VN')} đ`;
+
+function readCart() {
+    let value;
+    try {
+        value = JSON.parse(localStorage.getItem(cartKey)
+            || localStorage.getItem('fashionhub-cart')
+            || localStorage.getItem('cart')
+            || '[]');
+    } catch {
+        value = [];
+    }
+
+    if (!Array.isArray(value)) return [];
+    return value.filter(item => item && String(item.id || '').trim()
+        && Number.isFinite(Number(item.price)) && Number(item.price) >= 0)
+        .map(item => ({
+            id: String(item.id),
+            name: String(item.name || 'Sản phẩm'),
+            category: String(item.category || ''),
+            image: String(item.image || ''),
+            variantId: Number(item.variantId) > 0 ? Number(item.variantId) : null,
+            variantLabel: String(item.variantLabel || ''),
+            stock: Number.isFinite(Number(item.stock)) ? Math.max(0, Math.floor(Number(item.stock))) : 99,
+            price: Number(item.price),
+            quantity: Math.min(99, Math.max(1, Math.floor(Number(item.quantity) || 1)))
+        }));
+}
+
+function saveCart(cart) {
+    localStorage.setItem(cartKey, JSON.stringify(cart));
+    localStorage.removeItem('fashionhub-cart');
+    localStorage.removeItem('cart');
+}
+
+function showToast(message) {
+    let el = document.querySelector('.app-toast');
+    if (!el) {
+        el = document.createElement('div');
+        el.className = 'app-toast';
+        document.body.appendChild(el);
+    }
+    el.textContent = message;
+    el.classList.add('show');
+    clearTimeout(window.__toastTimer);
+    window.__toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+}
+
+function updateCartBadge() {
+    const count = readCart().reduce((sum, item) => sum + item.quantity, 0);
+    const badge = document.getElementById('headerCartCount');
+    if (badge) badge.textContent = String(count);
+    document.querySelectorAll('.cart-link b').forEach(item => item.textContent = String(count));
+}
+
+let cartSyncQueue = Promise.resolve();
+
+function syncCartToServer(cart) {
+    if (!window.shopCartSyncEnabled) return Promise.resolve(true);
+
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+    if (!token) {
+        showToast('Không thể xác thực thao tác giỏ hàng. Vui lòng tải lại trang.');
+        return Promise.resolve(false);
+    }
+
+    const snapshot = cart.map(item => ({
+        id: item.id,
+        variantId: item.variantId || null,
+        quantity: item.quantity
+    }));
+    cartSyncQueue = cartSyncQueue.then(async () => {
+        const body = new URLSearchParams({
+            cartJson: JSON.stringify(snapshot),
+            __RequestVerificationToken: token
+        });
+        const response = await fetch(window.shopCartSyncUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            body
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Không thể cập nhật giỏ hàng.');
+        return true;
+    }).catch(error => {
+        showToast(error.message || 'Không thể đồng bộ giỏ hàng.');
+        return false;
+    });
+    return cartSyncQueue;
+}
+
+window.updateHeaderCartBadge = updateCartBadge;
+window.addProductToCart = (id, variantId, name, price, image, category, variantLabel, stock, quantity) => {
+    const productId = String(id || '').trim();
+    const skuId = Number(variantId);
+    const parsedPrice = Number(price);
+    const availableStock = Math.max(0, Math.floor(Number(stock) || 0));
+    const amount = Math.floor(Number(quantity) || 1);
+    if (!productId || !Number.isSafeInteger(skuId) || skuId < 1
+        || !Number.isFinite(parsedPrice) || parsedPrice < 0 || amount < 1 || amount > 99) {
+        showToast('Thông tin sản phẩm không hợp lệ.');
+        return;
+    }
+
+    const cart = readCart();
+    const existing = cart.find(item => item.id === productId && item.variantId === skuId);
+    if (existing && existing.quantity + amount > availableStock) {
+        showToast('Số lượng trong giỏ vượt quá tồn kho hiện tại.');
+        return;
+    }
+    if (!existing && amount > availableStock) {
+        showToast('Số lượng vượt quá tồn kho hiện tại.');
+        return;
+    }
+    if (existing) {
+        existing.quantity = Math.min(99, existing.quantity + amount);
+        existing.stock = availableStock;
+        existing.price = parsedPrice;
+        existing.variantLabel = String(variantLabel || '');
+    }
+    else cart.push({
+        id: productId,
+        variantId: skuId,
+        name: String(name || 'Sản phẩm'),
+        category: String(category || ''),
+        variantLabel: String(variantLabel || ''),
+        stock: availableStock,
+        price: parsedPrice,
+        image: String(image || ''),
+        quantity: amount
+    });
+
+    try {
+        saveCart(cart);
+        updateCartBadge();
+        showToast(`Đã thêm ${amount} sản phẩm vào giỏ hàng.`);
+    } catch {
+        showToast('Không thể lưu giỏ hàng trên trình duyệt này.');
+    }
+};
+
 document.addEventListener('DOMContentLoaded', () => {
-    const money = value => `${Math.max(0, Number(value)).toLocaleString('vi-VN')} đ`;
-    const cartKey = 'fashionhub-cart';
-    const wishlistKey = 'fashionhub-wishlist';
-
-    const read = key => { try { return JSON.parse(localStorage.getItem(key) || '[]'); } catch { return []; } };
+    const read = key => {
+        try { return JSON.parse(localStorage.getItem(key) || '[]'); }
+        catch { return []; }
+    };
     const write = (key, value) => localStorage.setItem(key, JSON.stringify(value));
+    const toast = showToast;
 
-    function toast(message) {
-        let el = document.querySelector('.app-toast');
-        if (!el) { el = document.createElement('div'); el.className = 'app-toast'; document.body.appendChild(el); }
-        el.textContent = message;
-        el.classList.add('show');
-        clearTimeout(window.__toastTimer);
-        window.__toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
-    }
+    const persistenceReady = (async () => {
+        if (!window.shopCartSyncEnabled) return;
+        try {
+            await cartSyncQueue;
+            const response = await fetch(window.shopPersistentCartUrl);
+            if (!response.ok) throw new Error('Không tải được giỏ hàng đã lưu.');
+            const persistentCart = await response.json();
+            const localCart = readCart();
+            if (persistentCart.length > 0) {
+                const merged = new Map();
+                [...persistentCart, ...localCart].forEach(item => {
+                    const key = `${item.id}:${item.variantId || ''}`;
+                    const previous = merged.get(key);
+                    merged.set(key, previous
+                        ? { ...previous, quantity: Math.max(previous.quantity, item.quantity) }
+                        : item);
+                });
+                saveCart([...merged.values()]);
+                await syncCartToServer(readCart());
+            } else if (localCart.length > 0) {
+                await syncCartToServer(localCart);
+            }
+        } catch (error) {
+            toast(error.message || 'Không thể tải giỏ hàng đã lưu.');
+        }
+    })();
 
-    function refreshCartBadges() {
-        const count = read(cartKey).reduce((sum, item) => sum + Number(item.quantity || 1), 0);
-        document.querySelectorAll('.cart-link b').forEach(badge => badge.textContent = String(count));
-    }
-
+    updateCartBadge();
     document.querySelectorAll('[data-add-cart]').forEach(button => {
-        button.addEventListener('click', event => {
-            event.preventDefault();
-            const cart = read(cartKey);
-            const id = button.dataset.addCart;
-            const detailQtyEl = document.querySelector('.detail-quantity strong');
-            const qtyToAdd = detailQtyEl && button.closest('.detail-actions') ? Number(detailQtyEl.textContent || 1) : 1;
-
-            const existing = cart.find(item => item.id === id);
-            if (existing) existing.quantity = Number(existing.quantity || 1) + qtyToAdd;
-            else cart.push({
-                id,
-                name: button.dataset.name || 'Sản phẩm',
-                price: Number(button.dataset.price || 0),
-                image: button.dataset.image || '',
-                category: button.dataset.category || '',
-                quantity: qtyToAdd
-            });
-            write(cartKey, cart);
-            refreshCartBadges();
-            toast('Đã thêm sản phẩm vào giỏ hàng');
+        button.addEventListener('click', async () => {
+            await persistenceReady;
+            const detailQuantity = button.closest('.detail-actions')?.querySelector('#detailQty');
+            window.addProductToCart(
+                button.dataset.addCart,
+                button.dataset.variantId,
+                button.dataset.name,
+                button.dataset.price,
+                button.dataset.image,
+                button.dataset.category,
+                button.dataset.variantLabel,
+                button.dataset.stock,
+                detailQuantity?.textContent || 1
+            );
+            await syncCartToServer(readCart());
         });
     });
 
@@ -75,85 +227,215 @@ document.addEventListener('DOMContentLoaded', () => {
     const detailQuantity = document.querySelector('.detail-quantity strong');
     if (detailQuantity) {
         const buttons = document.querySelectorAll('.detail-quantity button');
+        const maxQuantity = Number(document.querySelector('.detail-actions [data-add-cart]')?.dataset.stock) || 1;
         buttons[0]?.addEventListener('click', () => detailQuantity.textContent = String(Math.max(1, Number(detailQuantity.textContent) - 1)));
-        buttons[1]?.addEventListener('click', () => detailQuantity.textContent = String(Number(detailQuantity.textContent) + 1));
-        const addButton = document.querySelector('.detail-actions [data-add-cart]');
-        addButton?.addEventListener('click', () => {
-            const cart = read(cartKey);
-            const id = addButton.dataset.addCart;
-            const quantity = Number(detailQuantity.textContent);
-            const existing = cart.find(item => item.id === id);
-            if (existing) existing.quantity = Number(existing.quantity || 1) + quantity;
-            else cart.push({ id, name:addButton.dataset.name, price:Number(addButton.dataset.price), image:addButton.dataset.image, category:addButton.dataset.category, quantity });
-            write(cartKey, cart); refreshCartBadges();
-        });
+        buttons[1]?.addEventListener('click', () => detailQuantity.textContent = String(Math.min(maxQuantity, 99, Number(detailQuantity.textContent) + 1)));
     }
 
     const cartContainer = document.querySelector('.cart-items');
-    if (cartContainer) {
-        let cart = read(cartKey);
-        if (!cart.length) {
-            cart = Array.from(document.querySelectorAll('.cart-item')).map(row => ({
-                id: row.dataset.id,
-                name: row.querySelector('h3')?.textContent || '',
-                category: row.querySelector('small')?.textContent || '',
-                image: row.querySelector('img')?.getAttribute('src') || '',
-                price: Number(row.dataset.price || 0),
-                quantity: 1
-            }));
-        }
+    const emptyMessage = () => {
+        const panel = document.createElement('div');
+        panel.className = 'cart-empty-state';
+        const icon = document.createElement('span');
+        icon.textContent = '🛍';
+        const title = document.createElement('h2');
+        title.textContent = 'Giỏ hàng đang trống';
+        const copy = document.createElement('p');
+        copy.textContent = 'Hãy chọn những thiết kế bạn yêu thích và quay lại đây nhé.';
+        const link = document.createElement('a');
+        link.href = '/Shop/Index';
+        link.className = 'checkout-button';
+        link.textContent = 'Khám phá sản phẩm';
+        panel.append(icon, title, copy, link);
+        return panel;
+    };
 
-        const renderCart = () => {
-            cartContainer.innerHTML = '';
-            cart.forEach((item, index) => {
-                const row = document.createElement('article');
-                row.className = 'cart-item';
-                row.dataset.price = item.price;
-                row.innerHTML = `<img src="${item.image}" alt="${item.name}"><div class="cart-item-info"><small>${item.category}</small><h3>${item.name}</h3><span>Kích thước: M &nbsp; Màu: Trắng</span></div><div class="quantity"><button type="button">−</button><strong>${item.quantity}</strong><button type="button">＋</button></div><strong>${money(item.price * item.quantity)}</strong><button type="button" class="remove">×</button>`;
-                const quantityButtons = row.querySelectorAll('.quantity button');
-                quantityButtons[0].addEventListener('click', () => { item.quantity = Math.max(1, item.quantity - 1); write(cartKey, cart); renderCart(); });
-                quantityButtons[1].addEventListener('click', () => { item.quantity += 1; write(cartKey, cart); renderCart(); });
-                row.querySelector('.remove').addEventListener('click', () => { cart.splice(index, 1); write(cartKey, cart); renderCart(); toast('Đã xóa khỏi giỏ hàng'); });
-                cartContainer.appendChild(row);
+    const drawCart = () => {
+        if (!cartContainer) return;
+        const cart = readCart();
+        cartContainer.replaceChildren();
+        if (cart.length === 0) cartContainer.appendChild(emptyMessage());
+
+        cart.forEach(item => {
+            const row = document.createElement('article');
+            row.className = 'cart-item';
+            const image = document.createElement('img');
+            image.src = item.image;
+            image.alt = item.name;
+            image.loading = 'lazy';
+
+            const info = document.createElement('div');
+            info.className = 'cart-item-info';
+            const category = document.createElement('small');
+            category.textContent = item.category;
+            const name = document.createElement('h3');
+            name.textContent = item.name;
+            const detail = document.createElement('span');
+            detail.textContent = item.variantLabel || 'Phiên bản được xác nhận khi thanh toán';
+            info.append(category, name, detail);
+
+            const quantity = document.createElement('div');
+            quantity.className = 'quantity';
+            const decrease = document.createElement('button');
+            decrease.type = 'button';
+            decrease.setAttribute('aria-label', 'Giảm số lượng');
+            decrease.textContent = '−';
+            const count = document.createElement('strong');
+            count.textContent = String(item.quantity);
+            const increase = document.createElement('button');
+            increase.type = 'button';
+            increase.setAttribute('aria-label', 'Tăng số lượng');
+            increase.textContent = '＋';
+            quantity.append(decrease, count, increase);
+
+            const lineTotal = document.createElement('strong');
+            lineTotal.className = 'cart-line-total';
+            lineTotal.textContent = money(item.price * item.quantity);
+            const remove = document.createElement('button');
+            remove.type = 'button';
+            remove.className = 'remove';
+            remove.setAttribute('aria-label', `Xóa ${item.name} khỏi giỏ hàng`);
+            remove.textContent = '×';
+            row.append(image, info, quantity, lineTotal, remove);
+
+            decrease.addEventListener('click', () => changeQuantity(item.id, item.variantId, -1));
+            increase.addEventListener('click', () => changeQuantity(item.id, item.variantId, 1));
+            remove.addEventListener('click', () => {
+                const updatedCart = readCart().filter(cartItem => cartItem.id !== item.id || cartItem.variantId !== item.variantId);
+                saveCart(updatedCart);
+                syncCartToServer(updatedCart);
+                drawCart();
+                toast('Đã xóa sản phẩm khỏi giỏ hàng.');
             });
-            const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-            const coupon = sessionStorage.getItem('fashionhub-coupon') === 'NEWYEAR20' ? 150000 : 0;
-            document.querySelectorAll('.order-summary > div:first-of-type strong').forEach(el => el.textContent = money(subtotal));
-            document.querySelectorAll('.order-summary .total strong').forEach(el => el.textContent = money(subtotal - coupon));
-            document.querySelectorAll('.cart-link b').forEach(badge => badge.textContent = String(cart.reduce((sum, item) => sum + item.quantity, 0)));
-        };
-
-        renderCart();
-
-        document.querySelector('.coupon button')?.addEventListener('click', () => {
-            const input = document.querySelector('.coupon input');
-            if (input?.value.trim().toUpperCase() === 'NEWYEAR20' || input?.value.trim().toUpperCase() === 'FASHION20') {
-                sessionStorage.setItem('fashionhub-coupon', 'NEWYEAR20'); toast('Áp dụng mã giảm 150.000 đ'); renderCart();
-            } else { sessionStorage.removeItem('fashionhub-coupon'); toast('Mã khuyến mãi không hợp lệ'); renderCart(); }
+            cartContainer.appendChild(row);
         });
+
+        const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+        const itemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+        const coupon = sessionStorage.getItem('fashionhub-coupon') === 'NEWYEAR20' ? Math.min(150000, subtotal) : 0;
+        const itemCountText = document.getElementById('cartItemCount');
+        const summaryItemCount = document.getElementById('summaryItemCount');
+        if (itemCountText) itemCountText.textContent = String(itemCount).padStart(2, '0');
+        if (summaryItemCount) summaryItemCount.textContent = `${itemCount} sản phẩm`;
+        const subtotalText = document.getElementById('cartSubtotal');
+        const totalText = document.getElementById('cartTotal');
+        if (subtotalText) subtotalText.textContent = money(subtotal);
+        if (totalText) totalText.textContent = money(subtotal - coupon);
+        const couponMessage = document.querySelector('.coupon-message');
+        if (couponMessage) couponMessage.textContent = coupon ? 'Đã áp dụng ưu đãi 150.000 đ.' : '';
+        const checkoutLink = document.querySelector('.order-summary .checkout-button');
+        if (checkoutLink) checkoutLink.classList.toggle('is-disabled', cart.length === 0);
+        updateCartBadge();
+    };
+
+    function changeQuantity(id, variantId, difference) {
+        const cart = readCart();
+        const item = cart.find(cartItem => cartItem.id === id && cartItem.variantId === variantId);
+        if (!item) return;
+        if (item.quantity + difference > item.stock) {
+            toast('Đã đạt số lượng tồn kho hiện tại.');
+            return;
+        }
+        item.quantity = Math.min(99, Math.max(1, item.quantity + difference));
+        saveCart(cart);
+        syncCartToServer(cart);
+        drawCart();
     }
 
-    // Hiển thị đúng các sản phẩm đã chọn ở trang Thanh toán (Checkout)
-    const checkoutPage = document.querySelector('.checkout-page');
-    if (checkoutPage) {
-        const cart = read(cartKey);
-        const summaryBox = checkoutPage.querySelector('.order-summary');
-        if (summaryBox && cart.length) {
-            summaryBox.querySelectorAll('.summary-product').forEach(el => el.remove());
-            const totalDiv = summaryBox.querySelector('.total');
-            let subtotal = 0;
-            cart.forEach(item => {
-                subtotal += item.price * item.quantity;
-                const prodDiv = document.createElement('div');
-                prodDiv.className = 'summary-product';
-                prodDiv.innerHTML = `<img src="${item.image}"><div><strong>${item.name}</strong><small>Số lượng: ${item.quantity}</small></div><b>${money(item.price * item.quantity)}</b>`;
-                summaryBox.insertBefore(prodDiv, totalDiv);
-            });
-            const coupon = sessionStorage.getItem('fashionhub-coupon') === 'NEWYEAR20' ? 150000 : 0;
-            const totalStrong = totalDiv?.querySelector('strong');
-            if (totalStrong) totalStrong.textContent = money(subtotal - coupon);
+    if (cartContainer) drawCart();
+    persistenceReady.then(() => {
+        if (cartContainer) drawCart();
+        if (checkoutPage) drawCheckoutSummary();
+    });
+
+    document.querySelector('.order-summary .checkout-button')?.addEventListener('click', event => {
+        if (readCart().length === 0) {
+            event.preventDefault();
+            toast('Hãy thêm sản phẩm trước khi thanh toán.');
         }
+    });
+
+    document.querySelector('.coupon button')?.addEventListener('click', () => {
+        const input = document.querySelector('.coupon input');
+        const couponMessage = document.querySelector('.coupon-message');
+        if (input?.value.trim().toUpperCase() === 'NEWYEAR20') {
+            sessionStorage.setItem('fashionhub-coupon', 'NEWYEAR20');
+            if (couponMessage) couponMessage.textContent = 'Đã áp dụng ưu đãi 150.000 đ.';
+            toast('Áp dụng mã giảm 150.000 đ.');
+        } else {
+            sessionStorage.removeItem('fashionhub-coupon');
+            if (couponMessage) couponMessage.textContent = 'Mã khuyến mãi không hợp lệ.';
+            toast('Mã khuyến mãi không hợp lệ.');
+        }
+        drawCart();
+    });
+
+    const checkoutPage = document.querySelector('.checkout-page');
+    function drawCheckoutSummary() {
+        if (!checkoutPage) return;
+        const cart = readCart();
+        const products = document.getElementById('checkoutProducts');
+        products.replaceChildren();
+        let subtotal = 0;
+        cart.forEach(item => {
+            subtotal += item.price * item.quantity;
+            const row = document.createElement('div');
+            row.className = 'summary-product';
+            const image = document.createElement('img');
+            image.src = item.image;
+            image.alt = item.name;
+            const info = document.createElement('div');
+            const name = document.createElement('strong');
+            name.textContent = item.name;
+            const quantity = document.createElement('small');
+            quantity.textContent = `Số lượng: ${item.quantity}`;
+            info.append(name, quantity);
+            const total = document.createElement('b');
+            total.textContent = money(item.price * item.quantity);
+            row.append(image, info, total);
+            products.appendChild(row);
+        });
+        if (cart.length === 0) {
+            const empty = document.createElement('p');
+            empty.className = 'checkout-empty-message';
+            empty.textContent = 'Giỏ hàng đang trống. Hãy quay lại cửa hàng để chọn sản phẩm.';
+            products.appendChild(empty);
+        }
+        const discount = sessionStorage.getItem('fashionhub-coupon') === 'NEWYEAR20' ? Math.min(150000, subtotal) : 0;
+        document.getElementById('checkoutSubtotal').textContent = money(subtotal);
+        document.getElementById('checkoutDiscount').textContent = money(discount);
+        document.getElementById('checkoutTotal').textContent = money(subtotal - discount);
     }
+
+    if (checkoutPage) {
+        drawCheckoutSummary();
+    }
+
+    const placeForm = document.querySelector('#place-order-form');
+    placeForm?.addEventListener('submit', event => {
+        const cart = readCart();
+        if (!cart.length) {
+            event.preventDefault();
+            toast('Giỏ hàng của bạn đang trống.');
+            return;
+        }
+
+        placeForm.querySelectorAll('.dynamic-order-field').forEach(el => el.remove());
+        const appendField = (name, value) => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = name;
+            input.value = value ?? '';
+            input.className = 'dynamic-order-field';
+            placeForm.appendChild(input);
+        };
+        appendField('cartJson', JSON.stringify(cart.map(item => ({
+            id: item.id,
+            variantId: item.variantId || null,
+            quantity: item.quantity
+        }))));
+        appendField('couponCode', sessionStorage.getItem('fashionhub-coupon') || '');
+    });
 
     document.querySelectorAll('.payment-option').forEach(option => option.addEventListener('click', () => {
         document.querySelectorAll('.payment-option').forEach(item => item.classList.remove('selected'));
@@ -169,45 +451,6 @@ document.addEventListener('DOMContentLoaded', () => {
     productSearch?.addEventListener('input', () => {
         const keyword = productSearch.value.toLowerCase();
         document.querySelectorAll('.table-panel tbody tr').forEach(row => row.hidden = !row.textContent.toLowerCase().includes(keyword));
-    });
-
-    const placeOrderButton = document.querySelector('#place-order-button');
-    placeOrderButton?.addEventListener('click', event => {
-        const checkoutForm = document.querySelector('#checkout-form');
-        const placeForm = document.querySelector('#place-order-form');
-        const cart = read(cartKey);
-
-        if (!cart.length) {
-            event.preventDefault();
-            toast('Giỏ hàng của bạn đang trống!');
-            return;
-        }
-
-        if (checkoutForm && !checkoutForm.checkValidity()) {
-            event.preventDefault();
-            checkoutForm.reportValidity();
-            toast('Vui lòng nhập đầy đủ thông tin giao hàng');
-            return;
-        }
-
-        if (placeForm && checkoutForm) {
-            placeForm.querySelectorAll('.dynamic-order-field').forEach(el => el.remove());
-            const appendField = (name, val) => {
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = name;
-                input.value = val ?? '';
-                input.className = 'dynamic-order-field';
-                placeForm.appendChild(input);
-            };
-
-            const fd = new FormData(checkoutForm);
-            fd.forEach((value, key) => appendField(key, value));
-            appendField('cartJson', JSON.stringify(cart));
-            appendField('couponCode', sessionStorage.getItem('fashionhub-coupon') || '');
-            localStorage.removeItem(cartKey);
-            sessionStorage.removeItem('fashionhub-coupon');
-        }
     });
 
     document.querySelectorAll('.toggle-password').forEach(button => {
@@ -243,12 +486,6 @@ document.addEventListener('DOMContentLoaded', () => {
             status.className = active ? 'badge badge-success' : (status.textContent.trim() === 'Tạm khóa' ? 'badge badge-danger' : status.className);
             toast(status.textContent.trim() === 'Tạm khóa' ? 'Đã khóa tài khoản' : 'Đã cập nhật trạng thái');
         });
-    });
-
-    const productSearch = document.querySelector('.management-toolbar .filter-search input');
-    productSearch?.addEventListener('input', () => {
-        const keyword = productSearch.value.toLowerCase();
-        document.querySelectorAll('.table-panel tbody tr').forEach(row => row.hidden = !row.textContent.toLowerCase().includes(keyword));
     });
 
     document.querySelectorAll('.promotion-card button').forEach(button => {
@@ -297,5 +534,5 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    refreshCartBadges();
+    updateCartBadge();
 });

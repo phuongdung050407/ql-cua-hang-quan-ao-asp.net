@@ -47,33 +47,21 @@
             <strong class="detail-price">@Model.Price.ToString("N0") đ</strong>
             <p class="detail-description">Sản phẩm được may từ chất liệu cao cấp, mềm mại và thoáng mát. Thiết kế hiện đại, dễ phối đồ và phù hợp cho nhiều hoàn cảnh.</p>
 
-            <div class="option-group">
-                <label>Kích thước</label>
-                <div class="size-options">
-                    <button type="button" onclick="selectSize(this)">S</button>
-                    <button type="button" class="selected" onclick="selectSize(this)">M</button>
-                    <button type="button" onclick="selectSize(this)">L</button>
-                    <button type="button" onclick="selectSize(this)">XL</button>
-                </div>
-            </div>
-
-            <div class="option-group">
-                <label>Màu sắc</label>
-                <div class="color-options">
-                    <button type="button" class="color-white" title="Trắng"></button>
-                    <button type="button" class="color-beige" title="Be"></button>
-                    <button type="button" class="color-black" title="Đen"></button>
-                </div>
+            <div class="selected-variant">
+                <span>Phiên bản</span>
+                <strong>@(string.IsNullOrWhiteSpace(Model.VariantLabel) ? "Chưa có phiên bản khả dụng" : Model.VariantLabel)</strong>
+                <small>@(Model.Stock > 0 ? $"Còn {Model.Stock} sản phẩm" : "Sản phẩm hiện đang tạm hết hàng")</small>
             </div>
 
             <div class="detail-actions">
                 <div class="quantity detail-quantity">
-                    <button type="button" onclick="changeDetailQty(-1)">−</button>
+                    <button type="button" aria-label="Giảm số lượng">−</button>
                     <strong id="detailQty">1</strong>
-                    <button type="button" onclick="changeDetailQty(1)">＋</button>
+                    <button type="button" aria-label="Tăng số lượng">＋</button>
                 </div>
-                <button type="button" class="checkout-button"
-                        onclick="addDetailToCart('@Model.Id', '@Model.Name.Replace("'", "\\'")', @((int)Model.Price), '@Model.Image')">
+                <button type="button" class="checkout-button" data-add-cart="@Model.Id" data-variant-id="@Model.VariantId"
+                        data-variant-label="@Model.VariantLabel" data-stock="@Model.Stock" data-name="@Model.Name" data-price="@Model.Price"
+                        data-image="@Model.Image" data-category="@Model.Category" disabled="@(Model.VariantId == null || Model.Stock < 1)">
                     Thêm vào giỏ hàng
                 </button>
                 <button type="button" class="detail-favorite" data-wishlist="@Model.Id">♡</button>
@@ -136,9 +124,11 @@
         }
     </section>
 
+    @if (related.Any())
+    {
     <section class="recommend-section">
         <div class="section-heading">
-            <div><span>CÓ THỂ BẠN THÍCH</span><h2>Sản phẩm liên quan</h2></div>
+            <div><span>ĐƯỢC CHỌN DÀNH RIÊNG CHO BẠN</span><h2>Có thể bạn cũng thích</h2></div>
         </div>
         <div class="recommend-grid">
             @foreach (var p in related)
@@ -156,31 +146,9 @@
             }
         </div>
     </section>
+    }
 </main>
 
 @section Scripts {
     <script src="~/js/site.js" asp-append-version="true"></script>
-    <script>
-        function selectSize(btn) {
-            btn.parentElement.querySelectorAll('button').forEach(b => b.classList.remove('selected'));
-            btn.classList.add('selected');
-        }
-        function changeDetailQty(delta) {
-            const el = document.getElementById('detailQty');
-            const next = Math.max(1, (parseInt(el.textContent) || 1) + delta);
-            el.textContent = next;
-        }
-        function addDetailToCart(id, name, price, image) {
-            const qty = parseInt(document.getElementById('detailQty').textContent) || 1;
-            const key = 'fashionhub_cart';
-            let cart = JSON.parse(localStorage.getItem(key) || '[]');
-            const item = cart.find(x => String(x.id) === String(id));
-            if (item) item.quantity = (Number(item.quantity) || 1) + qty;
-            else cart.push({ id: String(id), name, price: Number(price), image, quantity: qty });
-            localStorage.setItem(key, JSON.stringify(cart));
-            localStorage.setItem('cart', JSON.stringify(cart));
-            if (typeof updateHeaderCartBadge === 'function') updateHeaderCartBadge();
-            alert('Đã thêm ' + qty + ' "' + name + '" vào giỏ hàng!');
-        }
-    </script>
 }

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShopProject.Models;
+using System.Security.Claims;
 
 namespace ShopProject.Controllers;
 
@@ -144,26 +145,24 @@ public class ManagementController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateOrderStatus(long id, string status)
     {
-        var order = await _context.DonHangs.FindAsync(id);
-        if (order != null)
+        var newStatus = status switch
         {
-            order.TrangThai = status switch
-            {
-                "Chờ xử lý" => "Cho_xac_nhan",
-                "Đang xử lý" => "Da_xac_nhan",
-                "Đã xác nhận" => "Da_xac_nhan",
-                "Đang giao" => "Dang_giao",
-                "Hoàn tất" => "Da_giao",
-                "Đã hủy" => "Da_huy",
-                _ => order.TrangThai
-            };
-            if (order.TrangThai == "Da_giao")
-            {
-                order.TrangThaiThanhToan = "Da_thanh_toan";
-            }
-            order.ThoiGianCapNhat = DateTime.Now;
-            await _context.SaveChangesAsync();
-        }
+            "Chờ xử lý" => "Cho_xac_nhan",
+            "Đang xử lý" or "Đã xác nhận" => "Da_xac_nhan",
+            "Đang giao" => "Dang_giao",
+            "Hoàn tất" => "Da_giao",
+            "Đã hủy" => "Da_huy",
+            _ => null
+        };
+        if (newStatus == null)
+            return BadRequest("Trạng thái đơn hàng không hợp lệ.");
+
+        var userId = long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsedUserId)
+            ? parsedUserId
+            : (long?)null;
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"EXEC dbo.sp_CapNhatTrangThaiDon @DonHangID={id}, @TrangThaiMoi={newStatus}, @NguoiCapNhat={userId}, @GhiChu={status}");
+
         return RedirectToAction(nameof(Orders));
     }
 

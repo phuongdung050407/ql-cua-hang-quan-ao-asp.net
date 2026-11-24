@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
     <link rel="stylesheet" href="~/css/store.css" asp-append-version="true" />
 </head>
-<body class="shop-body">
+<body class="shop-body" data-cart-sync-enabled="@(User.Identity?.IsAuthenticated == true ? "true" : "false")">
     <!-- Thanh thông báo khuyến mãi trên cùng -->
     <div class="announcement-bar">
         <span>MIỄN PHÍ VẬN CHUYỂN CHO ĐƠN HÀNG TỪ 500.000Đ &nbsp;|&nbsp; NHẬP MÃ <strong>NEWYEAR20</strong> GIẢM NGAY 150K</span>
@@ -29,10 +29,13 @@
                 <a asp-controller="Shop" asp-action="Index" asp-route-category="Áo" class="menu-item">Áo</a>
                 <a asp-controller="Shop" asp-action="Index" asp-route-category="Quần" class="menu-item">Quần</a>
                 <a asp-controller="Shop" asp-action="Index" asp-route-category="Váy đầm" class="menu-item">Váy đầm</a>
+                <a asp-controller="Shop" asp-action="Recommendations" class="menu-item">Gợi ý cho bạn</a>
                 <a href="#san-pham-noi-bat" class="menu-item highlight">Bộ sưu tập mới</a>
             </nav>
 
             <div class="shop-actions">
+                <a asp-controller="Shop" asp-action="Recommendations" class="mobile-recommendations-link d-lg-none">Gợi ý</a>
+                @Html.AntiForgeryToken()
                 <!-- Tìm kiếm nhanh -->
                 <form asp-controller="Shop" asp-action="Index" method="get" class="header-search d-none d-md-flex">
                     <input type="text" name="search" value="@Context.Request.Query["search"]" placeholder="Tìm áo, quần, mã SP..." />
@@ -50,6 +53,7 @@
                 {
                     <div class="user-dropdown">
                         <span class="user-pill">👤 @User.Identity.Name</span>
+                        <a asp-controller="Shop" asp-action="MyOrders" class="btn-orders-link">Đơn hàng</a>
                         @if (User.IsInRole("Admin") || User.IsInRole("Employee"))
                         {
                             <a asp-controller="Home" asp-action="Index" class="btn-admin-link">Quản trị</a>
@@ -118,14 +122,20 @@
 
     <script src="~/lib/bootstrap/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+            window.shopCartSyncEnabled = document.body.dataset.cartSyncEnabled === 'true';
+            window.shopPersistentCartUrl = '@Url.Action("PersistentCart", "Shop")';
+            window.shopCartSyncUrl = '@Url.Action("SyncCart", "Shop")';
             // Đồng bộ số lượng giỏ hàng trên Header
             function updateHeaderCartBadge() {
                 try {
-                    const cart = JSON.parse(localStorage.getItem('fashionhub_cart') || localStorage.getItem('cart') || '[]');
+                    const cart = JSON.parse(localStorage.getItem('fashionhub_cart') || localStorage.getItem('fashionhub-cart') || localStorage.getItem('cart') || '[]');
                     const total = cart.reduce((sum, item) => sum + (Number(item.quantity) || 1), 0);
                     const badge = document.getElementById('headerCartCount');
                     if (badge) badge.textContent = total;
-                } catch (e) { }
+                } catch (e) {
+                    const badge = document.getElementById('headerCartCount');
+                    if (badge) badge.textContent = '0';
+                }
             }
             document.addEventListener('DOMContentLoaded', updateHeaderCartBadge);
     </script>

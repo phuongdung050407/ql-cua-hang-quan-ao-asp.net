@@ -8,16 +8,29 @@ Luu y:
 - Chay toan bo file bang SSMS (Execute / F5).
 ===============================================================================
 */
+
+
+
 USE master;
 GO
-IF DB_ID(N'ClothingShopDB_Complete') IS NULL
-    CREATE DATABASE ClothingShopDB_Complete;
+
+-- Xoa database cu neu da ton tai
+IF DB_ID(N'ClothingShopDB_Complete') IS NOT NULL
+BEGIN
+    ALTER DATABASE ClothingShopDB_Complete
+    SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+
+    DROP DATABASE ClothingShopDB_Complete;
+END;
 GO
+
+-- Tao database moi
+CREATE DATABASE ClothingShopDB_Complete;
+GO
+
 USE ClothingShopDB_Complete;
 GO
-IF OBJECT_ID(N'dbo.nguoi_dung', N'U') IS NOT NULL
-    THROW 50990, N'Database da co cau truc. Hay sao luu va dung database moi hoac xoa database cu truoc khi chay lai script.', 1;
-GO
+
 
 /* 1. TAI KHOAN, VAI TRO, NHAN VIEN */
 CREATE TABLE dbo.nguoi_dung(
@@ -1334,3 +1347,68 @@ BEGIN CATCH
     THROW;
 END CATCH;
 GO
+
+
+
+
+USE ClothingShopDB_Complete;
+GO
+
+-- 1. Tạo tài khoản Admin
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.nguoi_dung
+    WHERE email = 'admin@fashion.vn'
+)
+BEGIN
+    INSERT INTO dbo.nguoi_dung
+        (email, ten_dang_nhap, mat_khau_hash, ho_ten)
+    VALUES
+        ('admin@fashion.vn', 'admin',
+         'Admin123@', N'Quản trị viên');
+END;
+GO
+
+-- 2. Tạo tài khoản Nhân viên
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.nguoi_dung
+    WHERE email = 'nhanvien@fashion.vn'
+)
+BEGIN
+    INSERT INTO dbo.nguoi_dung
+        (email, ten_dang_nhap, mat_khau_hash, ho_ten)
+    VALUES
+        ('nhanvien@fashion.vn', 'nhanvien',
+         'Nhanvien123@', N'Nhân viên');
+END;
+GO
+
+-- 3. Tạo tài khoản Khách hàng
+IF NOT EXISTS (
+    SELECT 1 FROM dbo.nguoi_dung
+    WHERE email = 'khachhang@gmail.com'
+)
+BEGIN
+    INSERT INTO dbo.nguoi_dung
+        (email, ten_dang_nhap, mat_khau_hash, ho_ten)
+    VALUES
+        ('khachhang@gmail.com', 'khachhang',
+         'Khachhang123@', N'Khách hàng');
+END;
+GO
+
+-- Kiểm tra tài khoản đã tạo
+SELECT id, email, ten_dang_nhap, ho_ten
+FROM dbo.nguoi_dung
+WHERE email IN (
+    'admin@fashion.vn',
+    'nhanvien@fashion.vn',
+    'khachhang@gmail.com'
+);
+GO
+
+
+UPDATE dbo.nguoi_dung
+SET email = 'admin@fashion.vn',
+    mat_khau_hash = 'Admin123@',
+    ho_ten = N'Quản trị viên'
+WHERE ten_dang_nhap = 'admin';

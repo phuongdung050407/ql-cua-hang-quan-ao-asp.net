@@ -1,0 +1,78 @@
+@model List<ProductViewModel>
+@{
+    Layout = "_ShopLayout";
+    ViewData["Title"] = "Gợi ý sản phẩm";
+}
+
+<main class="recommendations-page">
+    <header class="recommendations-heading">
+        <div>
+            <p class="recommendations-kicker">FASHIONHUB <span>/</span> TUYỂN CHỌN</p>
+            <h1>Gợi ý <em>dành cho bạn</em></h1>
+            <p>
+                @if (User.Identity?.IsAuthenticated == true)
+                {
+                    @:Những lựa chọn được đề xuất dựa trên sản phẩm bạn đã xem.
+                }
+                else
+                {
+                    @:Khám phá các sản phẩm đang có sẵn. Đăng nhập để nhận gợi ý phù hợp hơn với bạn.
+                }
+            </p>
+        </div>
+        @if (User.Identity?.IsAuthenticated != true)
+        {
+            <a asp-controller="Shop" asp-action="Login" class="recommendations-login-link">Đăng nhập <span aria-hidden="true">↗</span></a>
+        }
+    </header>
+
+    @if (Model.Count == 0)
+    {
+        <section class="recommendations-empty">
+            <h2>Chưa có gợi ý phù hợp</h2>
+            <p>Hiện chưa có sản phẩm còn hàng để đề xuất. Hãy quay lại cửa hàng sau nhé.</p>
+            <a asp-controller="Shop" asp-action="Index">Quay lại cửa hàng</a>
+        </section>
+    }
+    else
+    {
+        <section class="recommendations-results" aria-label="Sản phẩm được gợi ý">
+            <div class="recommendations-results-heading">
+                <span>ĐƯỢC CHỌN CHO BẠN</span>
+                <strong>@Model.Count sản phẩm</strong>
+            </div>
+            <div class="recommend-grid">
+                @foreach (var item in Model)
+                {
+                    <article class="product-card">
+                        <div class="product-thumb">
+                            <a asp-controller="Shop" asp-action="Detail" asp-route-id="@item.Id">
+                                <img src="@item.Image" alt="@item.Name" loading="lazy" />
+                            </a>
+                            <span class="product-tag">@item.Category</span>
+                            <div class="product-overlay">
+                                <a asp-controller="Shop" asp-action="Detail" asp-route-id="@item.Id" class="btn-quick-view">Xem chi tiết</a>
+                                <button type="button" class="btn-quick-add" data-add-cart="@item.Id" data-variant-id="@item.VariantId"
+                                        data-variant-label="@item.VariantLabel" data-stock="@item.Stock" data-name="@item.Name" data-price="@item.Price"
+                                        data-image="@item.Image" data-category="@item.Category" disabled="@(item.VariantId == null || item.Stock < 1)">
+                                    @(item.Stock > 0 ? "+ Thêm giỏ" : "Tạm hết hàng")
+                                </button>
+                            </div>
+                        </div>
+                        <div class="product-info">
+                            <a asp-controller="Shop" asp-action="Detail" asp-route-id="@item.Id" class="product-title" title="@item.Name">@item.Name</a>
+                            <div class="product-bottom">
+                                <strong class="product-price">@item.Price.ToString("N0") đ</strong>
+                                <span class="product-stock">@item.Status</span>
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+</main>
+
+@section Scripts {
+    <script src="~/js/site.js" asp-append-version="true"></script>
+}
