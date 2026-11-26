@@ -17,13 +17,17 @@ public class LoginViewModel
 public class RegisterViewModel
 {
     [Required(ErrorMessage = "Vui lòng nhập họ và tên")]
+    [StringLength(200, ErrorMessage = "Họ tên không được vượt quá 200 ký tự")]
     public string FullName { get; set; } = "";
 
     [Required(ErrorMessage = "Vui lòng nhập email")]
     [EmailAddress(ErrorMessage = "Email không hợp lệ")]
+    [StringLength(255, ErrorMessage = "Email không được vượt quá 255 ký tự")]
     public string Email { get; set; } = "";
 
     [Required(ErrorMessage = "Vui lòng nhập số điện thoại")]
+    [Phone(ErrorMessage = "Số điện thoại không hợp lệ")]
+    [StringLength(20, ErrorMessage = "Số điện thoại không được vượt quá 20 ký tự")]
     public string Phone { get; set; } = "";
 
     [Required(ErrorMessage = "Vui lòng nhập mật khẩu")]

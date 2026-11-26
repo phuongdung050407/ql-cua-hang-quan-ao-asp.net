@@ -1,8 +1,82 @@
-@model List<ShopProject.Models.PersonViewModel>
-@{ ViewData["Title"]="Nhân viên"; }
-<div class="page-heading"><div><p class="eyebrow">QUẢN LÝ</p><h1>Nhân viên</h1></div><button class="primary-button" data-bs-toggle="modal" data-bs-target="#employeeModal">＋ Thêm nhân viên</button></div>
-<div class="stats-grid people-stats"><article class="stat-card"><div class="stat-icon violet">♧</div><div><p>Tổng nhân viên</p><strong>@Model.Count</strong></div></article><article class="stat-card"><div class="stat-icon green">✓</div><div><p>Đang làm việc</p><strong>@Model.Count(p=>p.Status=="Hoạt động")</strong></div></article><article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Nghỉ phép</p><strong>@Model.Count(p=>p.Status=="Nghỉ phép")</strong></div></article><article class="stat-card"><div class="stat-icon blue">◆</div><div><p>Quản lý</p><strong>@Model.Count(p=>p.Role.Contains("Quản"))</strong></div></article></div>
-<section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Nhân viên</th><th>Chức vụ</th><th>Điện thoại</th><th>Email</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
-@foreach(var person in Model){<tr><td><div class="person-cell"><div>@person.Name.Substring(0,1)</div><strong>@person.Name</strong></div></td><td>@person.Role</td><td>@person.Phone</td><td>@person.Email</td><td><select name="status" class="status-select" data-type="employee" data-id="@person.Id" data-current="@person.Status"><option>Hoạt động</option><option>Nghỉ phép</option><option>Tạm khóa</option></select></td><td><button type="button" class="icon-button status-save" data-type="employee" data-id="@person.Id">Lưu</button></td></tr>}
-</tbody></table></div></section>
-<div class="modal fade" id="employeeModal"><div class="modal-dialog"><div class="modal-content"><div class="modal-header"><h5>Thêm nhân viên</h5><button class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><p>Nhân viên mới cần được tạo trong module quản lý người dùng sau khi kết nối SQL Server.</p></div></div></div></div>
+@model List<ShopProject.Models.NhanVien>
+@{
+    ViewData["Title"] = "Nhân viên";
+    var dangLam = Model.Count(e => e.TrangThai == "Dang_lam");
+    var tamNghi = Model.Count(e => e.TrangThai == "Tam_nghi");
+    var quanLy = Model.Count(e => e.ChucVu.Contains("Quản", StringComparison.OrdinalIgnoreCase));
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">QUẢN LÝ</p>
+        <h1>Nhân viên</h1>
+    </div>
+    <button type="button" class="primary-button" onclick="document.getElementById('addEmpBox').style.display='block'">＋ Thêm nhân viên</button>
+</div>
+
+<div id="addEmpBox" class="panel" style="display:none;margin-bottom:20px;padding:18px">
+    <form method="post" action="/Management/AddEmployee" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        @Html.AntiForgeryToken()
+        <input name="hoTen" placeholder="Họ tên nhân viên" required style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px" />
+        <input name="email" type="email" placeholder="Email đăng nhập" required style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px" />
+        <input name="soDienThoai" placeholder="Số điện thoại" style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;width:140px" />
+        <input name="chucVu" placeholder="Chức vụ (VD: Bán hàng, Thủ kho)" required style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px" />
+        <input name="luong" type="number" min="0" value="8000000" placeholder="Lương cơ bản" style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;width:140px" />
+        <button type="submit" class="primary-button">Lưu nhân viên</button>
+        <button type="button" class="icon-button" onclick="document.getElementById('addEmpBox').style.display='none'">Hủy</button>
+    </form>
+</div>
+
+<div class="stats-grid people-stats">
+    <article class="stat-card"><div class="stat-icon violet">♧</div><div><p>Tổng nhân viên</p><strong>@Model.Count</strong></div></article>
+    <article class="stat-card"><div class="stat-icon green">✓</div><div><p>Đang làm việc</p><strong>@dangLam</strong></div></article>
+    <article class="stat-card"><div class="stat-icon amber">◷</div><div><p>Tạm nghỉ</p><strong>@tamNghi</strong></div></article>
+    <article class="stat-card"><div class="stat-icon blue">◆</div><div><p>Quản lý</p><strong>@quanLy</strong></div></article>
+</div>
+
+<section class="panel table-panel">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Nhân viên</th>
+                    <th>Chức vụ</th>
+                    <th>Điện thoại</th>
+                    <th>Email</th>
+                    <th>Trạng thái</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in Model)
+                {
+                    var hoTen = e.NguoiDung?.HoTen ?? e.MaNhanVien;
+                    var initial = string.IsNullOrWhiteSpace(hoTen) ? "N" : hoTen.Trim().Substring(0, 1).ToUpper();
+                    <tr>
+                        <td>
+                            <div class="person-cell">
+                                <div>@initial</div>
+                                <strong>@hoTen <small style="display:block;color:#64748b;font-weight:400">@e.MaNhanVien</small></strong>
+                            </div>
+                        </td>
+                        <td>@e.ChucVu</td>
+                        <td>@(e.NguoiDung?.SoDienThoai ?? "—")</td>
+                        <td>@(e.NguoiDung?.Email ?? "—")</td>
+                        <td>
+                            <form method="post" action="/Management/UpdateEmployeeStatus" style="display:flex;gap:8px;align-items:center">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@e.Id" />
+                                <select name="trangThai" class="status-select">
+                                    <option value="Dang_lam" selected="@(e.TrangThai == "Dang_lam")">Đang làm</option>
+                                    <option value="Tam_nghi" selected="@(e.TrangThai == "Tam_nghi")">Tạm nghỉ</option>
+                                    <option value="Da_nghi" selected="@(e.TrangThai == "Da_nghi")">Đã nghỉ</option>
+                                </select>
+                                <button type="submit" class="icon-button">Lưu</button>
+                            </form>
+                        </td>
+                        <td>@e.Luong.ToString("N0") đ</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

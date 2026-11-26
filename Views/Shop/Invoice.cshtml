@@ -1,3 +1,123 @@
 @model List<ProductViewModel>
-@{ Layout = null; }
-<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hóa đơn @ViewBag.OrderCode</title><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet"><link rel="stylesheet" href="~/css/store.css"></head><body><main class="invoice-page"><article class="invoice"><header><div><span class="invoice-logo">F</span><h1>FashionHub</h1></div><div class="invoice-title"><span>HÓA ĐƠN</span><strong>@ViewBag.OrderCode</strong></div></header><div class="invoice-info"><div><small>KHÁCH HÀNG</small><strong>Nguyễn Văn An</strong><p>0912 345 678<br>123 Đường ABC, Quận 1, TP.HCM</p></div><div><small>THÔNG TIN ĐƠN</small><p>Ngày lập: 19/11/2026<br>Phương thức: COD<br>Trạng thái: Chờ xác nhận</p></div></div><table class="invoice-table"><thead><tr><th>Sản phẩm</th><th>SL</th><th>Đơn giá</th><th>Thành tiền</th></tr></thead><tbody>@foreach(var p in Model){<tr><td><strong>@p.Name</strong><small>@p.Category</small></td><td>1</td><td>@p.Price.ToString("N0") đ</td><td>@p.Price.ToString("N0") đ</td></tr>}</tbody></table><div class="invoice-total"><div><span>Tạm tính</span><strong>1.130.000 đ</strong></div><div><span>Phí vận chuyển</span><strong>0 đ</strong></div><div><span>Tổng cộng</span><strong>1.130.000 đ</strong></div></div><footer><p>Cảm ơn quý khách đã mua sắm tại FashionHub.</p><button onclick="window.print()" class="checkout-button">In hóa đơn</button></footer></article></main></body></html>
+@{
+    Layout = "_ShopLayout";
+    ViewData["Title"] = "Hóa đơn " + (ViewBag.OrderCode ?? "");
+    var order = ViewBag.Order as ShopProject.Models.DonHang;
+
+    string MapStatus(string? s) => s switch
+    {
+        "Cho_xac_nhan" => "Chờ xác nhận",
+        "Da_xac_nhan" => "Đã xác nhận",
+        "Dang_giao" => "Đang giao",
+        "Da_giao" => "Hoàn tất",
+        "Da_huy" => "Đã hủy",
+        _ => "Chờ xác nhận"
+    };
+
+    string MapPayment(string? p) => p switch
+    {
+        "Chuyen_khoan" => "Chuyển khoản ngân hàng",
+        "Vi_dien_tu" => "Ví điện tử",
+        _ => "Thanh toán khi nhận hàng (COD)"
+    };
+
+    var tamTinh = order?.TienHang ?? Model.Sum(x => x.Price);
+    var phiShip = order?.PhiVanChuyen ?? 0;
+    var giamGia = order?.TienGiam ?? 0;
+    var tongCong = order?.TongThanhToan ?? (tamTinh + phiShip - giamGia);
+}
+
+<main class="invoice-page">
+    <article class="invoice">
+        <header>
+            <div>
+                <span class="invoice-logo">F</span>
+                <h1>FashionHub</h1>
+            </div>
+            <div class="invoice-title">
+                <span>HÓA ĐƠN</span>
+                <strong>@(order?.MaDonHang ?? ViewBag.OrderCode)</strong>
+            </div>
+        </header>
+
+        <div class="invoice-info">
+            <div>
+                <small>KHÁCH HÀNG</small>
+                <strong>@(order?.TenNguoiNhan ?? "Khách hàng")</strong>
+                <p>
+                    @(order?.DienThoaiNhan ?? "")<br />
+                    @(order?.DiaChiGiao ?? "")
+                </p>
+            </div>
+            <div>
+                <small>THÔNG TIN ĐƠN</small>
+                <p>
+                    Ngày lập: @(order != null ? order.ThoiGianTao.ToString("dd/MM/yyyy HH:mm") : DateTime.Now.ToString("dd/MM/yyyy"))<br />
+                    Phương thức: @MapPayment(order?.PhuongThucThanhToan)<br />
+                    Trạng thái: @MapStatus(order?.TrangThai)
+                </p>
+            </div>
+        </div>
+
+        <table class="invoice-table">
+            <thead>
+                <tr>
+                    <th>Sản phẩm</th>
+                    <th>SL</th>
+                    <th>Đơn giá</th>
+                    <th>Thành tiền</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (order != null && order.DonHangChiTiets.Any())
+                {
+                    foreach (var ct in order.DonHangChiTiets)
+                    {
+                        var thanhTien = ct.ThanhTien ?? (ct.DonGia * ct.SoLuong);
+                        <tr>
+                            <td>
+                                <strong>@ct.TenSanPham</strong>
+                                <small>Size: @ct.Size — Màu: @ct.MauSac</small>
+                            </td>
+                            <td>@ct.SoLuong</td>
+                            <td>@ct.DonGia.ToString("N0") đ</td>
+                            <td>@thanhTien.ToString("N0") đ</td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    foreach (var p in Model)
+                    {
+                        var qty = p.Stock > 0 ? p.Stock : 1;
+                        var unitPrice = p.Price / qty;
+                        <tr>
+                            <td>
+                                <strong>@p.Name</strong>
+                                <small>@p.Category</small>
+                            </td>
+                            <td>@qty</td>
+                            <td>@unitPrice.ToString("N0") đ</td>
+                            <td>@p.Price.ToString("N0") đ</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+
+        <div class="invoice-total">
+            <div><span>Tạm tính</span><strong>@tamTinh.ToString("N0") đ</strong></div>
+            @if (giamGia > 0)
+            {
+                <div><span>Giảm giá</span><strong>-@giamGia.ToString("N0") đ</strong></div>
+            }
+            <div><span>Phí vận chuyển</span><strong>@phiShip.ToString("N0") đ</strong></div>
+            <div><span>Tổng cộng</span><strong>@tongCong.ToString("N0") đ</strong></div>
+        </div>
+
+        <footer>
+            <p class="mb-0">Cảm ơn quý khách đã mua sắm tại FashionHub.</p>
+            <button type="button" onclick="window.print()" class="checkout-button">In hóa đơn</button>
+        </footer>
+    </article>
+</main>

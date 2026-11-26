@@ -1,4 +1,78 @@
-@{ ViewData["Title"]="Kho hàng"; }
-<div class="page-heading"><div><p class="eyebrow">KHO HÀNG</p><h1>Quản lý kho</h1></div><button class="primary-button">＋ Nhập kho</button></div>
-<div class="stats-grid people-stats"><article class="stat-card"><div class="stat-icon violet">▥</div><div><p>Tổng tồn kho</p><strong>1.248</strong></div></article><article class="stat-card"><div class="stat-icon green">↗</div><div><p>Giá trị kho</p><strong>684 tr</strong></div></article><article class="stat-card"><div class="stat-icon amber">△</div><div><p>Sắp hết hàng</p><strong>12</strong></div></article><article class="stat-card"><div class="stat-icon blue">＋</div><div><p>Nhập kho tháng</p><strong>320</strong></div></article></div>
-<section class="panel table-panel"><div class="management-toolbar"><div class="filter-search">⌕ <input placeholder="Tìm mã SKU, sản phẩm..."></div><select><option>Tất cả kho</option><option>Kho miền Bắc</option><option>Kho miền Nam</option></select></div><div class="table-wrap"><table><thead><tr><th>Sản phẩm</th><th>Mã SKU</th><th>Tồn kho</th><th>Đã giữ</th><th>Có thể bán</th><th>Vị trí</th><th></th></tr></thead><tbody>@foreach(var item in ShopProject.Models.ShopDataStore.Inventory){<tr><td><strong>@item.Name</strong></td><td>@item.Sku</td><td><strong>@item.Stock</strong></td><td>@item.Reserved</td><td>@(item.Stock-item.Reserved)</td><td>@item.Location</td><td><form method="post" asp-controller="Management" asp-action="UpdateInventory">@Html.AntiForgeryToken()<input type="hidden" name="id" value="@item.Id"><input name="stock" type="number" min="0" value="@item.Stock" class="inventory-input"><button type="submit" class="icon-button status-save">Lưu</button></form></td></tr>}</tbody></table></div></section>
+@model List<ShopProject.Models.TonKho>
+@{
+    ViewData["Title"] = "Kho hàng";
+    var tongTon = Model.Sum(t => t.SoLuongTon);
+    var giaTriKho = Model.Sum(t => t.SoLuongTon * (t.BienThe?.GiaBan ?? 0));
+    var sapHet = Model.Count(t => (t.SoLuongTon - t.SoLuongGiuCho) <= 5);
+    var khos = ViewBag.Khos as List<ShopProject.Models.Kho> ?? new List<ShopProject.Models.Kho>();
+    var bienThes = ViewBag.BienThes as List<ShopProject.Models.BienTheSanPham> ?? new List<ShopProject.Models.BienTheSanPham>();
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">KHO HÀNG</p>
+        <h1>Quản lý kho</h1>
+    </div>
+    <button type="button" class="primary-button" onclick="document.getElementById('importStockBox').style.display='block'">＋ Nhập kho</button>
+</div>
+
+<div id="importStockBox" class="panel" style="display:none;margin-bottom:20px;padding:18px">
+    <form method="post" action="/Management/ImportStock" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+        @Html.AntiForgeryToken()
+        <select name="khoId" required style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px">
+            @foreach (var k in khos)
+            {
+                <option value="@k.Id">@k.TenKho (@k.MaKho)</option>
+            }
+        </select>
+        <select name="bienTheId" required style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;max-width:340px">
+            @foreach (var bt in bienThes)
+            {
+                <option value="@bt.Id">@bt.SanPham?.TenSanPham — @bt.Sku</option>
+            }
+        </select>
+        <input type="number" name="soLuong" min="1" value="10" required placeholder="Số lượng nhập" style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;width:130px" />
+        <button type="submit" class="primary-button">Xác nhận nhập</button>
+        <button type="button" class="icon-button" onclick="document.getElementById('importStockBox').style.display='none'">Hủy</button>
+    </form>
+</div>
+
+<div class="stats-grid people-stats">
+    <article class="stat-card"><div class="stat-icon violet">▥</div><div><p>Tổng tồn kho</p><strong>@tongTon.ToString("N0")</strong></div></article>
+    <article class="stat-card"><div class="stat-icon green">↗</div><div><p>Giá trị kho</p><strong>@((giaTriKho / 1000000M).ToString("N1")) tr</strong></div></article>
+    <article class="stat-card"><div class="stat-icon amber">△</div><div><p>Sắp hết hàng</p><strong>@sapHet</strong></div></article>
+    <article class="stat-card"><div class="stat-icon blue">＋</div><div><p>Số mã SKU</p><strong>@Model.Count</strong></div></article>
+</div>
+
+<section class="panel table-panel">
+    <div class="management-toolbar">
+        <div class="filter-search">⌕ <input placeholder="Tìm mã SKU, sản phẩm..."></div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Sản phẩm</th>
+                    <th>Mã SKU</th>
+                    <th>Tồn kho</th>
+                    <th>Đã giữ</th>
+                    <th>Có thể bán</th>
+                    <th>Kho</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var i in Model)
+                {
+                    var coTheBan = i.SoLuongTon - i.SoLuongGiuCho;
+                    <tr>
+                        <td><strong>@(i.BienThe?.SanPham?.TenSanPham ?? "Sản phẩm")</strong></td>
+                        <td>@(i.BienThe?.Sku ?? "-")</td>
+                        <td><strong>@i.SoLuongTon</strong></td>
+                        <td>@i.SoLuongGiuCho</td>
+                        <td>@coTheBan</td>
+                        <td>@(i.Kho?.TenKho ?? "Kho chính")</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

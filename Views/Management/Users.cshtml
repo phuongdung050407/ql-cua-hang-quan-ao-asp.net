@@ -1,7 +1,71 @@
-@model List<ShopProject.Models.PersonViewModel>
-@{ ViewData["Title"]="Người dùng"; }
-<div class="page-heading"><div><p class="eyebrow">TÀI KHOẢN</p><h1>Người dùng</h1></div><a class="primary-button" href="/Shop/Register" style="text-decoration:none;display:inline-flex;align-items:center">＋ Tài khoản mới</a></div>
-<div class="management-toolbar"><div class="filter-search">⌕ <input placeholder="Tìm khách hàng..."></div><select><option>Tất cả vai trò</option><option>Khách hàng</option><option>Quản trị viên</option></select></div>
-<section class="panel table-panel"><div class="table-wrap"><table><thead><tr><th>Người dùng</th><th>Số điện thoại</th><th>Email</th><th>Vai trò</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>
-@foreach(var person in Model){<tr><td><div class="person-cell"><div>@person.Name.Substring(0,1)</div><strong>@person.Name</strong></div></td><td>@person.Phone</td><td>@person.Email</td><td>@person.Role</td><td><select name="status" class="status-select" data-type="user" data-id="@person.Id" data-current="@person.Status"><option>Hoạt động</option><option>Tạm khóa</option></select></td><td><button type="button" class="icon-button status-save" data-type="user" data-id="@person.Id">Lưu</button></td></tr>}
-</tbody></table></div></section>
+@model List<ShopProject.Models.NguoiDung>
+@{
+    ViewData["Title"] = "Người dùng";
+    string MapRole(ShopProject.Models.NguoiDung u)
+    {
+        var code = u.VaiTros.FirstOrDefault()?.MaVaiTro;
+        return code switch
+        {
+            "ADMIN" or "QUAN_TRI" => "Quản trị viên",
+            "NHAN_VIEN" => "Nhân viên",
+            _ => "Khách hàng"
+        };
+    }
+}
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">TÀI KHOẢN</p>
+        <h1>Người dùng</h1>
+    </div>
+    <a href="/Shop/Register" class="primary-button">＋ Thêm người dùng</a>
+</div>
+
+<section class="panel table-panel">
+    <div class="management-toolbar">
+        <div class="filter-search">⌕ <input placeholder="Tìm khách hàng..."></div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Người dùng</th>
+                    <th>Số điện thoại</th>
+                    <th>Email</th>
+                    <th>Vai trò</th>
+                    <th>Trạng thái</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in Model)
+                {
+                    var isActive = u.TrangThai == "Hoat_dong";
+                    var initial = string.IsNullOrWhiteSpace(u.HoTen) ? "U" : u.HoTen.Trim().Substring(0, 1).ToUpper();
+                    <tr>
+                        <td>
+                            <div class="person-cell">
+                                <div>@initial</div>
+                                <strong>@u.HoTen</strong>
+                            </div>
+                        </td>
+                        <td>@(string.IsNullOrWhiteSpace(u.SoDienThoai) ? "—" : u.SoDienThoai)</td>
+                        <td>@u.Email</td>
+                        <td>@MapRole(u)</td>
+                        <td>
+                            <form method="post" action="/Management/UpdateUserStatus" style="display:flex;gap:8px;align-items:center">
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="id" value="@u.Id" />
+                                <select name="trangThai" class="status-select">
+                                    <option value="Hoat_dong" selected="@isActive">Hoạt động</option>
+                                    <option value="Khoa" selected="@(!isActive)">Tạm khóa</option>
+                                </select>
+                                <button type="submit" class="icon-button">Lưu</button>
+                            </form>
+                        </td>
+                        <td><span style="font-size:12px;color:#64748b">ID #@u.Id</span></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>

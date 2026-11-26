@@ -1,3 +1,36 @@
 @model List<ProductViewModel>
-@{ Layout = null; }
-<!DOCTYPE html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Đặt hàng thành công</title><link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet"><link rel="stylesheet" href="~/css/store.css"></head><body><header class="store-header"><a class="store-brand" href="/Shop"><span>F</span> FashionHub</a><nav><a href="/Shop">Tiếp tục mua sắm</a></nav></header><main class="success-page"><section class="success-card"><div class="success-icon">✓</div><span class="hero-tag">ĐẶT HÀNG THÀNH CÔNG</span><h1>Cảm ơn bạn đã mua hàng</h1><p>Đơn hàng <strong>@ViewBag.OrderCode</strong> đã được xác nhận. Chúng tôi sẽ liên hệ để xác nhận trước khi giao hàng.</p><div class="success-order"><div><span>Mã đơn hàng</span><strong>@ViewBag.OrderCode</strong></div><div><span>Trạng thái</span><strong>Chờ xác nhận</strong></div><div><span>Tổng thanh toán</span><strong>1.130.000 đ</strong></div></div><div class="success-actions"><a href="/Shop/Invoice/@ViewBag.OrderCode" class="checkout-button">Xem hóa đơn</a><a href="/Shop" class="secondary-store-button">Về trang chủ</a></div></section></main><script src="~/js/site.js" asp-append-version="true"></script><script>localStorage.removeItem('fashionhub-cart');sessionStorage.removeItem('fashionhub-coupon');</script></body></html>
+@{
+    Layout = "_ShopLayout";
+    ViewData["Title"] = "Đặt hàng thành công";
+    var order = ViewBag.Order as ShopProject.Models.DonHang;
+    var tongTien = order?.TongThanhToan ?? Model.Sum(x => x.Price);
+}
+
+<main class="success-page">
+    <section class="success-card">
+        <div class="success-icon">✓</div>
+        <span class="hero-tag">ĐẶT HÀNG THÀNH CÔNG</span>
+        <h1>Cảm ơn bạn đã mua hàng</h1>
+        <p>Đơn hàng <strong>@ViewBag.OrderCode</strong> đã được xác nhận. Chúng tôi sẽ liên hệ để xác nhận trước khi giao hàng.</p>
+        <div class="success-order">
+            <div><span>Mã đơn hàng</span><strong>@ViewBag.OrderCode</strong></div>
+            <div><span>Trạng thái</span><strong>Chờ xác nhận</strong></div>
+            <div><span>Tổng thanh toán</span><strong>@tongTien.ToString("N0") đ</strong></div>
+        </div>
+        <div class="success-actions">
+            <a asp-controller="Shop" asp-action="Invoice" asp-route-id="@ViewBag.OrderCode" class="checkout-button">Xem hóa đơn</a>
+            <a asp-controller="Shop" asp-action="MyOrders" class="secondary-store-button">Lịch sử mua hàng</a>
+            <a asp-controller="Shop" asp-action="Index" class="secondary-store-button">Về trang chủ</a>
+        </div>
+    </section>
+</main>
+
+@section Scripts {
+    <script>
+        localStorage.removeItem('fashionhub_cart');
+        localStorage.removeItem('fashionhub-cart');
+        localStorage.removeItem('cart');
+        sessionStorage.removeItem('fashionhub-coupon');
+        if (typeof updateHeaderCartBadge === 'function') updateHeaderCartBadge();
+    </script>
+}

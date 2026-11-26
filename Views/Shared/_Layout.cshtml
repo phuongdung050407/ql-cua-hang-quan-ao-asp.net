@@ -1,54 +1,129 @@
-﻿<!DOCTYPE html>
+﻿@{
+    var currentController = ViewContext.RouteData.Values["controller"]?.ToString() ?? "";
+    var currentAction = ViewContext.RouteData.Values["action"]?.ToString() ?? "";
+    string IsActive(string ctrl, string act) =>
+        string.Equals(currentController, ctrl, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(currentAction, act, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+}
+<!DOCTYPE html>
 <html lang="vi">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>@ViewData["Title"] - Fashion Admin</title>
+    <title>@ViewData["Title"] - FashionHub Admin</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="~/lib/bootstrap/dist/css/bootstrap.min.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
 </head>
-<body>
+<body class="admin-body">
     <aside class="sidebar">
-        <a class="brand" asp-controller="Home" asp-action="Index"><span class="brand-mark">F</span><span>Fashion<span>Hub</span></span></a>
-        <nav>
-            <p class="nav-label">QUẢN LÝ</p>
-            <a class="nav-link active" asp-controller="Home" asp-action="Index"><b>▦</b> Tổng quan</a>
+        <a class="brand" asp-controller="Home" asp-action="Index">
+            <span class="brand-mark">F</span>
+            <div class="brand-info">
+                <span class="brand-name">FASHION<strong>HUB</strong></span>
+                <small>Workspace</small>
+            </div>
+        </a>
+
+        <nav class="sidebar-nav">
+            <p class="nav-label">VẬN HÀNH & QUẢN LÝ</p>
+            <a class="nav-link @IsActive("Home", "Index")" asp-controller="Home" asp-action="Index">
+                <i class="bi bi-grid-1x2"></i><span>Tổng quan</span>
+            </a>
+
             @if (User.IsInRole("Admin"))
             {
-                <a class="nav-link" asp-controller="Management" asp-action="Products"><b>◇</b> Sản phẩm</a>
-                <a class="nav-link" asp-controller="Management" asp-action="Categories"><b>⊞</b> Danh mục</a>
+                <a class="nav-link @IsActive("Management", "Products")" asp-controller="Management" asp-action="Products">
+                    <i class="bi bi-bag"></i><span>Sản phẩm</span>
+                </a>
+                <a class="nav-link @IsActive("Management", "Categories")" asp-controller="Management" asp-action="Categories">
+                    <i class="bi bi-tags"></i><span>Danh mục</span>
+                </a>
             }
-            <a class="nav-link" asp-controller="Management" asp-action="Orders"><b>▤</b> Đơn đặt hàng <em>8</em></a>
-            <a class="nav-link" asp-controller="Management" asp-action="Inventory"><b>▱</b> Kho hàng</a>
+
+            <a class="nav-link @IsActive("Management", "Orders")" asp-controller="Management" asp-action="Orders">
+                <i class="bi bi-receipt"></i><span>Đơn đặt hàng</span>
+                <em class="nav-badge">8</em>
+            </a>
+
+            <a class="nav-link @IsActive("Management", "Inventory")" asp-controller="Management" asp-action="Inventory">
+                <i class="bi bi-box-seam"></i><span>Kho hàng</span>
+            </a>
+
             @if (User.IsInRole("Admin"))
             {
-                <a class="nav-link" asp-controller="Management" asp-action="Users"><b>♙</b> Người dùng</a>
-                <a class="nav-link" asp-controller="Management" asp-action="Employees"><b>♧</b> Nhân viên</a>
-                <p class="nav-label">MARKETING</p>
-                <a class="nav-link" asp-controller="Management" asp-action="Promotions"><b>◫</b> Khuyến mãi</a>
-                <a class="nav-link" asp-controller="Management" asp-action="Reports"><b>⌁</b> Báo cáo</a>
+                <a class="nav-link @IsActive("Management", "Users")" asp-controller="Management" asp-action="Users">
+                    <i class="bi bi-people"></i><span>Khách hàng</span>
+                </a>
+                <a class="nav-link @IsActive("Management", "Employees")" asp-controller="Management" asp-action="Employees">
+                    <i class="bi bi-person-badge"></i><span>Nhân viên</span>
+                </a>
+
+                <p class="nav-label">TĂNG TRƯỞNG & BÁO CÁO</p>
+                <a class="nav-link @IsActive("Management", "Promotions")" asp-controller="Management" asp-action="Promotions">
+                    <i class="bi bi-ticket-perforated"></i><span>Khuyến mãi</span>
+                </a>
+                <a class="nav-link @IsActive("Management", "Reports")" asp-controller="Management" asp-action="Reports">
+                    <i class="bi bi-bar-chart-line"></i><span>Báo cáo doanh thu</span>
+                </a>
             }
-            <a class="nav-link" asp-controller="Management" asp-action="Reviews"><b>☆</b> Đánh giá</a>
-            <a class="nav-link" asp-controller="Shop" asp-action="Index"><b>↗</b> Xem cửa hàng</a>
+
+            <a class="nav-link @IsActive("Management", "Reviews")" asp-controller="Management" asp-action="Reviews">
+                <i class="bi bi-star"></i><span>Đánh giá</span>
+            </a>
+
+            <div class="nav-divider"></div>
+            <a class="nav-link store-shortcut" asp-controller="Shop" asp-action="Index">
+                <i class="bi bi-shop"></i><span>Xem giao diện Shop</span>
+                <i class="bi bi-arrow-up-right ms-auto small"></i>
+            </a>
         </nav>
+
         <div class="sidebar-user">
-            <div class="avatar">@(User.Identity?.IsAuthenticated == true ? User.Identity.Name?.Substring(0, 1).ToUpper() : "?")</div>
-            <div><strong>@(User.Identity?.IsAuthenticated == true ? User.Identity.Name : "Khách")</strong><span>@(User.IsInRole("Admin") ? "Quản trị viên" : User.IsInRole("Employee") ? "Nhân viên" : "Khách hàng")</span></div>
+            <div class="avatar">
+                @(User.Identity?.IsAuthenticated == true ? User.Identity.Name?.Substring(0, 1).ToUpper() : "A")
+            </div>
+            <div class="user-meta">
+                <strong>@(User.Identity?.IsAuthenticated == true ? User.Identity.Name : "Quản trị viên")</strong>
+                <span>@(User.IsInRole("Admin") ? "Quản trị viên" : User.IsInRole("Employee") ? "Nhân viên bán hàng" : "Tài khoản")</span>
+            </div>
             @if (User.Identity?.IsAuthenticated == true)
             {
-                <form asp-controller="Shop" asp-action="Logout" method="post">@Html.AntiForgeryToken()<button type="submit" title="Đăng xuất" style="border:0;background:transparent;color:#aaa">⏻</button></form>
+                <form asp-controller="Shop" asp-action="Logout" method="post" class="m-0">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn-sidebar-logout" title="Đăng xuất">
+                        <i class="bi bi-box-arrow-right"></i>
+                    </button>
+                </form>
             }
         </div>
     </aside>
 
     <main class="main-content">
         <header class="topbar">
-            <div class="search-box"><span>⌕</span><input placeholder="Tìm kiếm sản phẩm, đơn hàng..." /></div>
-            <div class="top-actions"><button>?</button><button class="bell">♢<i></i></button><div class="mini-avatar">TM</div></div>
+            <div class="search-box">
+                <i class="bi bi-search"></i>
+                <input type="text" placeholder="Tìm nhanh mã đơn, tên sản phẩm, khách hàng..." />
+            </div>
+
+            <div class="top-actions">
+                <span class="role-chip">
+                    <i class="bi bi-shield-check"></i>
+                    @(User.IsInRole("Admin") ? "Admin Mode" : "Staff Mode")
+                </span>
+                <button type="button" class="top-icon-btn" title="Thông báo">
+                    <i class="bi bi-bell"></i>
+                    <span class="dot"></span>
+                </button>
+                <div class="mini-avatar">
+                    @(User.Identity?.IsAuthenticated == true ? User.Identity.Name?.Substring(0, 1).ToUpper() : "FH")
+                </div>
+            </div>
         </header>
+
         <div class="content-area">
             @RenderBody()
         </div>

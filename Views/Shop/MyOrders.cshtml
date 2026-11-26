@@ -1,0 +1,96 @@
+@model List<ShopProject.Models.DonHang>
+@{
+    Layout = "_ShopLayout";
+    ViewData["Title"] = "Lịch sử mua hàng";
+
+    string StatusLabel(string status) => status switch
+    {
+        "Cho_xac_nhan" => "Chờ xác nhận",
+        "Da_xac_nhan" => "Đã xác nhận",
+        "Dang_giao" => "Đang giao",
+        "Da_giao" => "Đã giao",
+        "Da_huy" => "Đã hủy",
+        _ => status.Replace('_', ' ')
+    };
+
+    string StatusClass(string status) => status switch
+    {
+        "Cho_xac_nhan" => "order-state-pending",
+        "Da_xac_nhan" => "order-state-confirmed",
+        "Dang_giao" => "order-state-shipping",
+        "Da_giao" => "order-state-complete",
+        "Da_huy" => "order-state-cancelled",
+        _ => "order-state-pending"
+    };
+}
+
+<main class="order-history-page">
+    <header class="order-history-heading">
+        <div>
+            <p class="order-history-kicker">FASHIONHUB <span>/</span> TÀI KHOẢN</p>
+            <h1>Lịch sử <em>mua hàng</em></h1>
+            <p>Theo dõi trạng thái và xem lại các đơn hàng của bạn.</p>
+        </div>
+        <a asp-controller="Shop" asp-action="Index" class="order-history-shop-link">Tiếp tục mua sắm <span aria-hidden="true">↗</span></a>
+    </header>
+
+    <div class="order-history-count">
+        <span>ĐƠN HÀNG CỦA BẠN</span>
+        <strong>@Model.Count.ToString("D2")</strong>
+    </div>
+
+    @if (Model.Count == 0)
+    {
+        <section class="order-history-empty">
+            <span aria-hidden="true">F</span>
+            <h2>Bạn chưa có đơn hàng nào</h2>
+            <p>Những đơn hàng bạn đặt sẽ xuất hiện tại đây để tiện theo dõi.</p>
+            <a asp-controller="Shop" asp-action="Index">Khám phá sản phẩm</a>
+        </section>
+    }
+    else
+    {
+        <section class="order-history-list" aria-label="Danh sách đơn hàng">
+            @foreach (var order in Model)
+            {
+                <article class="order-history-card">
+                    <header class="order-history-card-header">
+                        <div>
+                            <span>MÃ ĐƠN HÀNG</span>
+                            <strong>@order.MaDonHang</strong>
+                        </div>
+                        <div>
+                            <span>NGÀY ĐẶT</span>
+                            <time datetime="@order.ThoiGianTao.ToString("s")">@order.ThoiGianTao.ToString("dd/MM/yyyy · HH:mm")</time>
+                        </div>
+                        <span class="order-history-status @StatusClass(order.TrangThai)">@StatusLabel(order.TrangThai)</span>
+                    </header>
+
+                    <div class="order-history-items">
+                        @foreach (var item in order.DonHangChiTiets)
+                        {
+                            <div class="order-history-item">
+                                <div>
+                                    <strong>@item.TenSanPham</strong>
+                                    <small>@item.Sku · Size @item.Size · @item.MauSac</small>
+                                </div>
+                                <span>@item.SoLuong × @item.DonGia.ToString("N0") đ</span>
+                            </div>
+                        }
+                    </div>
+
+                    <footer class="order-history-card-footer">
+                        <span>@order.DonHangChiTiets.Sum(item => item.SoLuong) sản phẩm</span>
+                        <div>
+                            <span>Tổng thanh toán</span>
+                            <strong>@order.TongThanhToan.ToString("N0") đ</strong>
+                        </div>
+                        <a asp-controller="Shop" asp-action="Invoice" asp-route-id="@order.MaDonHang">
+                            Xem hóa đơn <span aria-hidden="true">↗</span>
+                        </a>
+                    </footer>
+                </article>
+            }
+        </section>
+    }
+</main>
