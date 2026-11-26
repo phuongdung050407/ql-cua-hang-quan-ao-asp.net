@@ -126,6 +126,62 @@ public class ManagementController : Controller
         return RedirectToAction(nameof(Products));
     }
 
+    // Xem chi tiết sản phẩm
+
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> ViewDetails(int id)
+    {
+        var p = await _context.SanPhams
+            .Include(x => x.DanhMuc)
+            .Include(x => x.SanPhamAnhs)
+            .Include(x => x.BienTheSanPhams)
+                .ThenInclude(bt => bt.KichThuoc)
+            .Include(x => x.BienTheSanPhams)
+                .ThenInclude(bt => bt.MauSac)
+            .Include(x => x.BienTheSanPhams)
+                .ThenInclude(bt => bt.TonKhos)
+            .FirstOrDefaultAsync(x => x.Id == id);
+
+        if (p == null)
+            return NotFound();
+
+        var totalStock = p.BienTheSanPhams
+            .SelectMany(bt => bt.TonKhos)
+            .Sum(tk => tk.SoLuongTon);
+
+        var model = new ProductViewModel
+        {
+            Id = p.Id,
+            Name = p.TenSanPham,
+            Category = p.DanhMuc?.TenDanhMuc ?? "Khác",
+            Price = p.GiaBan,
+            Stock = totalStock,
+            Status = totalStock == 0
+                ? "Hết hàng"
+                : totalStock <= 10
+                    ? "Sắp hết"
+                    : "Đang bán",
+            Image = p.SanPhamAnhs.FirstOrDefault()?.Url
+                ?? "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600"
+        };
+
+        ViewBag.Variants = p.BienTheSanPhams
+            .Select(bt => new
+            {
+                bt.Id,
+                bt.Sku,
+                Size = bt.KichThuoc.MaSize,
+                Color = bt.MauSac.TenMau,
+                bt.MauSac.MaHex,
+                bt.GiaBan,
+                bt.TrangThai,
+                Stock = bt.TonKhos.Sum(tk => tk.SoLuongTon)
+            })
+            .ToList();
+
+        return View(model);
+    }
+
     // 2. QUẢN LÝ ĐƠN ĐẶT HÀNG THẬT (Admin & Nhân viên)
     public async Task<IActionResult> Orders()
     {

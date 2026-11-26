@@ -21,7 +21,7 @@
                         <td>@p.Price.ToString("N0") đ</td>
                         <td>@p.Stock</td>
                         <td><span class="badge @(p.Status == "Đang bán" ? "badge-success" : p.Status == "Sắp hết" ? "badge-warning" : "badge-danger")">@p.Status</span></td>
-                        <td><a href="/Shop/Detail/@p.Id" target="_blank" class="icon-button" style="text-decoration:none">Xem</a></td>
+                        <td><a asp-controller="Management" asp-action="ViewDetails" asp-route-id="@p.Id" class="icon-button" style="text-decoration:none">Xem</a></td>
                     </tr>
                 }
             </tbody>
