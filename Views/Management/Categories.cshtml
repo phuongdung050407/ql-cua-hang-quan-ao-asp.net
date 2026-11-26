@@ -4,17 +4,17 @@
     var metaMap = ViewBag.CategoryMeta as System.Collections.IDictionary;
     var iconOptions = new[]
     {
-        ("👕", "Áo thun"),
-        ("👔", "Áo sơ mi"),
-        ("🧥", "Áo khoác"),
-        ("👖", "Quần"),
-        ("👗", "Váy đầm"),
-        ("👟", "Giày dép"),
-        ("👜", "Túi xách"),
-        ("🧢", "Mũ / Nón"),
-        ("🕶", "Phụ kiện"),
-        ("🧦", "Đồ lót / Tất"),
-        ("◫", "Khác")
+        ("👕", "Áo thun", "LETTER"),
+        ("👔", "Áo sơ mi", "LETTER"),
+        ("🧥", "Áo khoác", "LETTER"),
+        ("👖", "Quần", "LETTER"),
+        ("👗", "Váy đầm", "LETTER"),
+        ("👟", "Giày dép", "SHOE_ASIAN"),
+        ("👜", "Túi xách", "ACCESSORY"),
+        ("🧢", "Mũ / Nón", "ACCESSORY"),
+        ("🕶", "Phụ kiện", "ACCESSORY"),
+        ("🧦", "Đồ lót / Tất", "ACCESSORY"),
+        ("◫", "Khác", "LETTER")
     };
 }
 
@@ -69,6 +69,20 @@
         font-size: 19px;
         flex-shrink: 0;
     }
+    .size-type-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .st-letter { background: #eef2ff; color: #3730a3; }
+    .st-shoe { background: #ecfeff; color: #0e7490; }
+    .st-acc { background: #fef3c7; color: #92400e; }
+
     .cat-actions {
         display: flex;
         align-items: center;
@@ -154,19 +168,31 @@
         <h3 style="margin:0">Thêm danh mục mới</h3>
         <button type="button" class="act-btn" onclick="closeAllCatBoxes()">✕</button>
     </div>
-    <form method="post" asp-action="CreateCategory" asp-controller="Management" class="form-grid-admin">
+    <form method="post" asp-action="CreateCategory" asp-controller="Management" class="form-grid-admin" data-cat-form="add">
         @Html.AntiForgeryToken()
         <input type="hidden" name="icon" id="add-cat-icon" value="👕" />
-        <label>Tên danh mục<input name="tenDanhMuc" required placeholder="Ví dụ: Giày thể thao, Phụ kiện..." /></label>
-        <label>Mô tả<input name="moTa" placeholder="Mô tả ngắn về nhóm sản phẩm..." /></label>
+        <label>Tên danh mục
+            <input name="tenDanhMuc" id="add-cat-name" required placeholder="Ví dụ: Giày thể thao, Thắt lưng, Áo thun..." oninput="syncSizeFromText('add')" />
+        </label>
+        <label>Phân loại kích thước / đại lượng
+            <select name="loaiSize" id="add-cat-size-type" data-manual="0" onchange="this.dataset.manual='1'">
+                <option value="LETTER">Quần áo — Size chữ (XS, S, M, L, XL, XXL)</option>
+                <option value="SHOE_ASIAN">Giày dép — Size số châu Á (35 – 44)</option>
+                <option value="ACCESSORY">Phụ kiện — Không size / Đại lượng chọn</option>
+            </select>
+        </label>
+        <label style="grid-column: 1 / -1;">Mô tả
+            <input name="moTa" placeholder="Mô tả ngắn về nhóm sản phẩm..." />
+        </label>
         <div style="grid-column: 1 / -1;">
             <label>Chọn biểu tượng (Icon)</label>
-            <div class="icon-picker" data-target="add-cat-icon">
+            <div class="icon-picker" id="add-icon-picker" data-target="add-cat-icon" data-sizetarget="add-cat-size-type" data-mode="add">
                 @foreach (var opt in iconOptions)
                 {
                     <button type="button"
                             class="icon-opt @(opt.Item1 == "👕" ? "selected" : "")"
                             data-icon="@opt.Item1"
+                            data-size="@opt.Item3"
                             onclick="selectCatIcon(this)">
                         <span class="ic-glyph">@opt.Item1</span>
                         <span>@opt.Item2</span>
@@ -186,20 +212,32 @@
         <h3 style="margin:0">Chỉnh sửa danh mục</h3>
         <button type="button" class="act-btn" onclick="closeAllCatBoxes()">✕</button>
     </div>
-    <form method="post" asp-action="EditCategory" asp-controller="Management" class="form-grid-admin">
+    <form method="post" asp-action="EditCategory" asp-controller="Management" class="form-grid-admin" data-cat-form="edit">
         @Html.AntiForgeryToken()
         <input type="hidden" name="id" id="edit-cat-id" />
         <input type="hidden" name="icon" id="edit-cat-icon" value="👕" />
-        <label>Tên danh mục<input name="tenDanhMuc" id="edit-cat-name" required /></label>
-        <label>Mô tả<input name="moTa" id="edit-cat-desc" placeholder="Mô tả ngắn..." /></label>
+        <label>Tên danh mục
+            <input name="tenDanhMuc" id="edit-cat-name" required oninput="syncSizeFromText('edit')" />
+        </label>
+        <label>Phân loại kích thước / đại lượng
+            <select name="loaiSize" id="edit-cat-size-type" data-manual="1" onchange="this.dataset.manual='1'">
+                <option value="LETTER">Quần áo — Size chữ (XS, S, M, L, XL, XXL)</option>
+                <option value="SHOE_ASIAN">Giày dép — Size số châu Á (35 – 44)</option>
+                <option value="ACCESSORY">Phụ kiện — Không size / Đại lượng chọn</option>
+            </select>
+        </label>
+        <label style="grid-column: 1 / -1;">Mô tả
+            <input name="moTa" id="edit-cat-desc" placeholder="Mô tả ngắn..." />
+        </label>
         <div style="grid-column: 1 / -1;">
             <label>Chọn biểu tượng (Icon)</label>
-            <div class="icon-picker" id="edit-icon-picker" data-target="edit-cat-icon">
+            <div class="icon-picker" id="edit-icon-picker" data-target="edit-cat-icon" data-sizetarget="edit-cat-size-type" data-mode="edit">
                 @foreach (var opt in iconOptions)
                 {
                     <button type="button"
                             class="icon-opt"
                             data-icon="@opt.Item1"
+                            data-size="@opt.Item3"
                             onclick="selectCatIcon(this)">
                         <span class="ic-glyph">@opt.Item1</span>
                         <span>@opt.Item2</span>
@@ -213,13 +251,14 @@
     </form>
 </section>
 
-<!-- 3. BẢNG DANH SÁCH DANH MỤC (MỖI DANH MỤC 1 HÀNG NHƯ SẢN PHẨM) -->
+<!-- 3. BẢNG DANH SÁCH DANH MỤC -->
 <section class="panel table-panel">
     <div class="table-wrap">
         <table>
             <thead>
                 <tr>
                     <th>Tên danh mục</th>
+                    <th>Quy chuẩn size / đại lượng</th>
                     <th>Mô tả</th>
                     <th>Số sản phẩm</th>
                     <th>Trạng thái</th>
@@ -232,6 +271,15 @@
                     dynamic? meta = metaMap != null && metaMap.Contains(c.Id) ? metaMap[c.Id] : null;
                     string icon = meta?.Icon ?? "◫";
                     string desc = meta?.Description ?? "";
+                    string sizeType = meta?.SizeType ?? "LETTER";
+
+                    var (pillClass, pillIcon, pillLabel) = sizeType switch
+                    {
+                        "SHOE_ASIAN" => ("st-shoe", "👟", "Giày dép • Size số châu Á"),
+                        "ACCESSORY" => ("st-acc", "👜", "Phụ kiện • Đại lượng / Không size"),
+                        _ => ("st-letter", "👕", "Quần áo • Size chữ")
+                    };
+
                     bool isActive = c.Status == "Đang hoạt động";
 
                     <tr>
@@ -240,6 +288,12 @@
                                 <span class="cat-icon-box">@icon</span>
                                 <strong>@c.Name</strong>
                             </div>
+                        </td>
+                        <td>
+                            <span class="size-type-pill @pillClass">
+                                <span>@pillIcon</span>
+                                <span>@pillLabel</span>
+                            </span>
                         </td>
                         <td style="color:#64748b">@(string.IsNullOrEmpty(desc) ? "—" : desc)</td>
                         <td>@c.ProductCount sản phẩm</td>
@@ -252,6 +306,7 @@
                                         data-id="@c.Id"
                                         data-name="@c.Name"
                                         data-icon="@icon"
+                                        data-sizetype="@sizeType"
                                         data-desc="@desc"
                                         onclick="openEditCatModal(this)">Sửa</button>
 
@@ -291,9 +346,29 @@
         const isHidden = box.hasAttribute('hidden');
         closeAllCatBoxes();
         if (isHidden) {
+            if (boxId === 'add-cat-box') {
+                const sizeSelect = document.getElementById('add-cat-size-type');
+                if (sizeSelect) sizeSelect.dataset.manual = '0';
+            }
             box.removeAttribute('hidden');
             box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
+    }
+
+    function detectSizeTypeFromText(text) {
+        const s = (text || '').toLowerCase();
+        if (/(giày|dép|sneaker|boot|sandal)/.test(s)) return 'SHOE_ASIAN';
+        if (/(túi|phụ kiện|mũ|nón|thắt lưng|kính|tất|vớ)/.test(s)) return 'ACCESSORY';
+        return 'LETTER';
+    }
+
+    function syncSizeFromText(mode) {
+        const nameInput = document.getElementById(mode === 'add' ? 'add-cat-name' : 'edit-cat-name');
+        const sizeSelect = document.getElementById(mode === 'add' ? 'add-cat-size-type' : 'edit-cat-size-type');
+        if (!nameInput || !sizeSelect || sizeSelect.dataset.manual === '1') return;
+
+        const guessed = detectSizeTypeFromText(nameInput.value);
+        sizeSelect.value = guessed;
     }
 
     function selectCatIcon(btn) {
@@ -301,7 +376,15 @@
         const targetInput = document.getElementById(picker.dataset.target);
         picker.querySelectorAll('.icon-opt').forEach(el => el.classList.remove('selected'));
         btn.classList.add('selected');
-        if (targetInput) targetInput.value = btn.dataset.icon;
+
+        const ic = btn.dataset.icon || '👕';
+        if (targetInput) targetInput.value = ic;
+
+        const sizeSelect = document.getElementById(picker.dataset.sizetarget);
+        if (sizeSelect && sizeSelect.dataset.manual !== '1') {
+            const mappedSize = btn.dataset.size || detectSizeTypeFromText(ic);
+            sizeSelect.value = mappedSize;
+        }
     }
 
     function openEditCatModal(btn) {
@@ -309,6 +392,10 @@
         document.getElementById('edit-cat-id').value = btn.dataset.id;
         document.getElementById('edit-cat-name').value = btn.dataset.name;
         document.getElementById('edit-cat-desc').value = btn.dataset.desc;
+
+        const sizeSelect = document.getElementById('edit-cat-size-type');
+        sizeSelect.value = btn.dataset.sizetype || 'LETTER';
+        sizeSelect.dataset.manual = '1';
 
         const currentIcon = btn.dataset.icon || '◫';
         document.getElementById('edit-cat-icon').value = currentIcon;

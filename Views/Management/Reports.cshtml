@@ -1,7 +1,11 @@
 @using ShopProject.Controllers
 @{
     ViewData["Title"] = "Báo cáo thống kê";
-    int selectedYear = ViewBag.SelectedYear ?? DateTime.Today.Year;
+    int currentYear = ViewBag.CurrentYear ?? DateTime.Today.Year;
+    int startYear = ViewBag.StartYear ?? currentYear;
+    if (startYear > currentYear) startYear = currentYear;
+
+    int selectedYear = ViewBag.SelectedYear ?? currentYear;
     int selectedMonth = ViewBag.SelectedMonth ?? DateTime.Today.Month;
     var data = ViewBag.ReportData as SalesReportSnapshot ?? new SalesReportSnapshot();
     var savedReports = ViewBag.SavedReports as List<SavedReportFileInfo> ?? new();
@@ -9,7 +13,6 @@
     var maxMonthRev = data.MonthlyBreakdown.Count > 0 ? data.MonthlyBreakdown.Max(x => x.Revenue) : 0m;
     var maxProdQty = data.TopProducts.Count > 0 ? data.TopProducts.Max(x => x.Stock) : 1;
     var maxCatRev = data.CategorySales.Count > 0 ? data.CategorySales.Max(x => x.Revenue) : 1m;
-    var totalStatusCount = Math.Max(1, data.CompletedOrders + data.ShippingOrders + data.PendingOrders + data.CancelledOrders);
 }
 
 <style>
@@ -67,7 +70,6 @@
     .kpi-up { color: #15803d; font-weight: 600; }
     .kpi-down { color: #dc2626; font-weight: 600; }
 
-    /* Biểu đồ cột có nhãn giá trị */
     .chart-grid-2 {
         display: grid;
         grid-template-columns: 1.65fr 1fr;
@@ -126,7 +128,6 @@
         font-weight: 600;
     }
 
-    /* Progress items */
     .rank-row {
         margin-bottom: 13px;
     }
@@ -149,7 +150,6 @@
         background: linear-gradient(90deg, #6366f1, #4f46e5);
     }
 
-    /* Status pills */
     .status-split-grid {
         display: grid;
         grid-template-columns: repeat(2, 1fr);
@@ -168,7 +168,6 @@
         margin-top: 2px;
     }
 
-    /* Saved PDF Archive */
     .act-btn {
         display: inline-flex;
         align-items: center;
@@ -206,7 +205,7 @@
             </select>
             <span>/</span>
             <select name="year" onchange="this.form.submit()">
-                @for (int y = DateTime.Today.Year; y >= DateTime.Today.Year - 3; y--)
+                @for (int y = startYear; y <= currentYear; y++)
                 {
                     <option value="@y" selected="@(y == selectedYear)">Năm @y</option>
                 }
@@ -397,7 +396,7 @@
     </article>
 </section>
 
-<!-- 4. KHO LƯU TRỮ FILE BÁO CÁO PDF ĐÃ XUẤT (TƯƠNG TỰ HÓA ĐƠN) -->
+<!-- 4. KHO LƯU TRỮ FILE BÁO CÁO PDF ĐÃ XUẤT -->
 <section class="panel table-panel" style="margin-top:18px">
     <div style="padding:16px 20px;border-bottom:1px solid #e2e8f0;display:flex;justify-content:space-between;align-items:center">
         <div>

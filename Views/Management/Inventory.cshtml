@@ -16,7 +16,43 @@
     var warningItems = Model.Where(t => alertMap.TryGetValue($"{t.KhoId}_{t.BienTheId}", out var a) && a.Level != "ok").ToList();
     var groupedByProduct = Model.GroupBy(t => t.BienThe.SanPhamId).ToList();
 }
+
+@functions {
+    string RenderIcon(string name, int size = 16, string cssClass = "ui-ico")
+    {
+        var paths = name switch
+        {
+            "excel" => "<path d=\"M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z\"/><polyline points=\"14 2 14 8 20 8\"/><path d=\"m9.5 12.5 5 5\"/><path d=\"m14.5 12.5-5 5\"/>",
+            "plus" => "<line x1=\"12\" y1=\"5\" x2=\"12\" y2=\"19\"/><line x1=\"5\" y1=\"12\" x2=\"19\" y2=\"12\"/>",
+            "box" => "<path d=\"M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z\"/><polyline points=\"3.27 6.96 12 12.01 20.73 6.96\"/><line x1=\"12\" y1=\"22.08\" x2=\"12\" y2=\"12\"/>",
+            "trend" => "<polyline points=\"22 7 13.5 15.5 8.5 10.5 2 17\"/><polyline points=\"16 7 22 7 22 13\"/>",
+            "alert" => "<path d=\"m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z\"/><line x1=\"12\" y1=\"9\" x2=\"12\" y2=\"13\"/><line x1=\"12\" y1=\"17\" x2=\"12.01\" y2=\"17\"/>",
+            "clock" => "<circle cx=\"12\" cy=\"12\" r=\"10\"/><polyline points=\"12 6 12 12 16 14\"/>",
+            "bell" => "<path d=\"M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9\"/><path d=\"M13.73 21a2 2 0 0 1-3.46 0\"/>",
+            "search" => "<circle cx=\"11\" cy=\"11\" r=\"8\"/><line x1=\"21\" y1=\"21\" x2=\"16.65\" y2=\"16.65\"/>",
+            "grid" => "<rect x=\"3\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"3\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"14\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/><rect x=\"3\" y=\"14\" width=\"7\" height=\"7\" rx=\"1.5\"/>",
+            "list" => "<line x1=\"8\" y1=\"6\" x2=\"21\" y2=\"6\"/><line x1=\"8\" y1=\"12\" x2=\"21\" y2=\"12\"/><line x1=\"8\" y1=\"18\" x2=\"21\" y2=\"18\"/><circle cx=\"4\" cy=\"6\" r=\"1\"/><circle cx=\"4\" cy=\"12\" r=\"1\"/><circle cx=\"4\" cy=\"18\" r=\"1\"/>",
+            "download" => "<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><polyline points=\"7 10 12 15 17 10\"/><line x1=\"12\" y1=\"15\" x2=\"12\" y2=\"3\"/>",
+            "sliders" => "<line x1=\"4\" y1=\"21\" x2=\"4\" y2=\"14\"/><line x1=\"4\" y1=\"10\" x2=\"4\" y2=\"3\"/><line x1=\"12\" y1=\"21\" x2=\"12\" y2=\"12\"/><line x1=\"12\" y1=\"8\" x2=\"12\" y2=\"3\"/><line x1=\"20\" y1=\"21\" x2=\"20\" y2=\"16\"/><line x1=\"20\" y1=\"12\" x2=\"20\" y2=\"3\"/><line x1=\"1\" y1=\"14\" x2=\"7\" y2=\"14\"/><line x1=\"9\" y1=\"8\" x2=\"15\" y2=\"8\"/><line x1=\"17\" y1=\"16\" x2=\"23\" y2=\"16\"/>",
+            _ => "<circle cx=\"12\" cy=\"12\" r=\"9\"/>"
+        };
+
+        return $"<svg class=\"{cssClass}\" width=\"{size}\" height=\"{size}\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.9\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\">{paths}</svg>";
+    }
+}
+
 <style>
+    .ui-ico {
+        display: inline-block;
+        flex-shrink: 0;
+        vertical-align: middle;
+    }
+    .stat-card .stat-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+    }
     .inv-header-actions {
         display: flex;
         align-items: center;
@@ -25,7 +61,7 @@
     .secondary-btn-top {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 7px;
         height: 40px;
         padding: 0 16px;
         border-radius: 10px;
@@ -41,6 +77,11 @@
         background: #f8fafc;
         border-color: #4f46e5;
         color: #4f46e5;
+    }
+    .primary-button {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
     }
     .sku-tag {
         display: inline-block;
@@ -83,6 +124,9 @@
         gap: 12px;
     }
     .restock-banner-head h4 {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
         margin: 0;
         font-size: 14.5px;
         font-weight: 700;
@@ -105,6 +149,9 @@
         color: #1e293b;
     }
     .restock-chip button {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
         border: 0;
         background: #4f46e5;
         color: #ffffff;
@@ -118,6 +165,7 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        gap: 4px;
         height: 30px;
         padding: 0 11px;
         border-radius: 8px;
@@ -254,6 +302,9 @@
         border: 1px solid #e2e8f0;
     }
     .view-switch-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         border: 0;
         background: transparent;
         padding: 6px 12px;
@@ -267,6 +318,14 @@
         background: #ffffff;
         color: #4f46e5;
         box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    }
+
+    /* Search box icon alignment */
+    .filter-search {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #64748b;
     }
 
     /* Product Matrix Cards */
@@ -348,10 +407,12 @@
     </div>
     <div class="inv-header-actions">
         <button type="button" class="secondary-btn-top" onclick="openInvBox('excel-import-box')">
-            <span>▤</span> Nhập từ Excel
+            @Html.Raw(RenderIcon("excel", 16))
+            <span>Nhập từ Excel</span>
         </button>
         <button type="button" class="primary-button" onclick="openInvBox('quick-import-box')">
-            ＋ Nhập kho
+            @Html.Raw(RenderIcon("plus", 16))
+            <span>Nhập kho</span>
         </button>
     </div>
 </div>
@@ -413,7 +474,8 @@
         </div>
         <div style="display:flex;gap:8px;align-items:center">
             <a asp-action="DownloadInventoryTemplate" asp-controller="Management" class="act-btn act-import" style="height:34px;padding:0 13px">
-                ⬇ Tải file Excel mẫu (.xlsx)
+                @Html.Raw(RenderIcon("download", 14))
+                <span>Tải file Excel mẫu (.xlsx)</span>
             </a>
             <button type="button" class="act-btn" style="height:34px" onclick="closeAllInvBoxes()">✕</button>
         </div>
@@ -438,7 +500,7 @@
 
         <div id="excel-selected-bar" class="excel-selected-bar" hidden>
             <div class="excel-file-meta">
-                <span style="font-size:18px">📄</span>
+                @Html.Raw(RenderIcon("excel", 18))
                 <strong id="excel-file-name"></strong>
                 <span id="excel-file-size" class="excel-size-badge"></span>
                 <span style="color:#15803d;font-size:12px;font-weight:600">✓ Sẵn sàng nhập</span>
@@ -475,14 +537,14 @@
 <!-- 4. 4 THẺ CHỈ SỐ TỔNG QUAN KHO -->
 <section class="stats-grid" style="margin-bottom:18px">
     <article class="stat-card">
-        <div class="stat-icon purple">▦</div>
+        <div class="stat-icon purple">@Html.Raw(RenderIcon("box", 20))</div>
         <div>
             <span>Tổng tồn kho</span>
             <strong>@totalStock.ToString("N0")</strong>
         </div>
     </article>
     <article class="stat-card">
-        <div class="stat-icon green">↗</div>
+        <div class="stat-icon green">@Html.Raw(RenderIcon("trend", 20))</div>
         <div>
             <span>Giá trị kho (Giá bán)</span>
             <strong style="font-size:18px">@totalSaleValue.ToString("N0") đ</strong>
@@ -492,14 +554,14 @@
         </div>
     </article>
     <article class="stat-card">
-        <div class="stat-icon amber">⚠</div>
+        <div class="stat-icon amber">@Html.Raw(RenderIcon("alert", 20))</div>
         <div>
             <span>Cần nhập / Cảnh báo</span>
             <strong>@warningItems.Count</strong>
         </div>
     </article>
     <article class="stat-card">
-        <div class="stat-icon blue">◷</div>
+        <div class="stat-icon blue">@Html.Raw(RenderIcon("clock", 20))</div>
         <div>
             <span>Đang lưu giỏ hàng</span>
             <strong>@totalReserved.ToString("N0")</strong>
@@ -512,7 +574,10 @@
 {
     <section class="restock-banner">
         <div class="restock-banner-head">
-            <h4>🔔 Gợi ý nhập kho ưu tiên (Dựa trên tồn kho thấp, giỏ hàng khách thêm nhiều & đơn đặt)</h4>
+            <h4>
+                @Html.Raw(RenderIcon("bell", 16))
+                <span>Gợi ý nhập kho ưu tiên (Dựa trên tồn kho thấp, giỏ hàng khách thêm nhiều & đơn đặt)</span>
+            </h4>
             <span style="font-size:12px;color:#b45309">Có @warningItems.Count phân loại cần chú ý</span>
         </div>
         <div class="restock-chips">
@@ -526,7 +591,8 @@
                     <span class="sku-tag">@w.BienThe.Sku</span>
                     <span><b>@w.BienThe.SanPham.TenSanPham</b> (@info.Tag • Giỏ: @info.InCart | Giữ: @w.SoLuongGiuCho)</span>
                     <button type="button" onclick="quickPrefillImport(@w.KhoId, @w.BienTheId, @info.SuggestedQty)">
-                        + Nhập @info.SuggestedQty
+                        @Html.Raw(RenderIcon("plus", 13))
+                        <span>Nhập @info.SuggestedQty</span>
                     </button>
                 </div>
             }
@@ -538,7 +604,8 @@
 <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px">
     <form method="get" asp-action="Inventory" asp-controller="Management" class="management-toolbar" style="margin-bottom:0;flex:1">
         <div class="filter-search">
-            ⌕ <input name="search" value="@ViewBag.Search" placeholder="Tìm mã SKU, mã SP, tên sản phẩm...">
+            @Html.Raw(RenderIcon("search", 15))
+            <input name="search" value="@ViewBag.Search" placeholder="Tìm mã SKU, mã SP, tên sản phẩm...">
         </div>
         <select name="khoId" onchange="this.form.submit()">
             <option value="">Tất cả kho</option>
@@ -559,10 +626,12 @@
 
     <div class="view-switch-group">
         <button type="button" id="btn-view-matrix" class="view-switch-btn active" onclick="switchInvView('matrix')">
-            ⊞ Nhóm theo Sản phẩm (Size × Màu)
+            @Html.Raw(RenderIcon("grid", 14))
+            <span>Nhóm theo Sản phẩm (Size × Màu)</span>
         </button>
         <button type="button" id="btn-view-table" class="view-switch-btn" onclick="switchInvView('table')">
-            ☰ Danh sách SKU phẳng
+            @Html.Raw(RenderIcon("list", 14))
+            <span>Danh sách SKU phẳng</span>
         </button>
     </div>
 </div>
@@ -641,11 +710,13 @@
                             <div style="display:flex;gap:5px">
                                 <button type="button" class="act-btn act-import"
                                         onclick="quickPrefillImport(@t.KhoId, @t.BienTheId, @info.SuggestedQty)">
-                                    ＋ Nhập
+                                    @Html.Raw(RenderIcon("plus", 13))
+                                    <span>Nhập</span>
                                 </button>
                                 <button type="button" class="act-btn"
                                         onclick="openAdjustModal(@t.KhoId, @t.BienTheId, '@t.BienThe.Sku', @t.SoLuongTon)">
-                                    Điều chỉnh
+                                    @Html.Raw(RenderIcon("sliders", 13))
+                                    <span>Điều chỉnh</span>
                                 </button>
                             </div>
                         </div>
@@ -710,11 +781,13 @@
                             <div style="display:flex;gap:6px">
                                 <button type="button" class="act-btn act-import"
                                         onclick="quickPrefillImport(@t.KhoId, @t.BienTheId, @info.SuggestedQty)">
-                                    ＋ Nhập
+                                    @Html.Raw(RenderIcon("plus", 13))
+                                    <span>Nhập</span>
                                 </button>
                                 <button type="button" class="act-btn"
                                         onclick="openAdjustModal(@t.KhoId, @t.BienTheId, '@t.BienThe.Sku', @t.SoLuongTon)">
-                                    Điều chỉnh
+                                    @Html.Raw(RenderIcon("sliders", 13))
+                                    <span>Điều chỉnh</span>
                                 </button>
                             </div>
                         </td>
@@ -792,14 +865,14 @@
 
         const nameLower = file.name.toLowerCase();
         if (!nameLower.endsWith('.xlsx') && !nameLower.endsWith('.csv')) {
-            errEl.textContent = '⚠ Chỉ chấp nhận file định dạng Excel (.xlsx) hoặc (.csv).';
+            errEl.textContent = 'Chỉ chấp nhận file định dạng Excel (.xlsx) hoặc (.csv).';
             errEl.hidden = false;
             inputEl.value = '';
             return;
         }
 
         if (file.size > MAX_EXCEL_BYTES) {
-            errEl.textContent = `⚠ Dung lượng file quá lớn (${formatFileSize(file.size)}). Vui lòng chọn file không quá 5 MB.`;
+            errEl.textContent = `Dung lượng file quá lớn (${formatFileSize(file.size)}). Vui lòng chọn file không quá 5 MB.`;
             errEl.hidden = false;
             inputEl.value = '';
             return;
@@ -816,7 +889,6 @@
         document.getElementById('excel-client-error').hidden = true;
     }
 
-    // Hỗ trợ kéo thả file trực tiếp vào vùng dropzone
     const dropzone = document.getElementById('excel-dropzone');
     if (dropzone) {
         ['dragenter', 'dragover'].forEach(evtName => {

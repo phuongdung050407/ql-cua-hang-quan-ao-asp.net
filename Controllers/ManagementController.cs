@@ -83,7 +83,7 @@ public class ManagementController : Controller
     }
 
     // =========================================================================
-    // 2. QUẢN LÝ KHO HÀNG (CẢNH BÁO TỒN KHO & NHẬP EXCEL QUA CKFINDER)
+    // 2. QUẢN LÝ KHO HÀNG (CẢNH BÁO TỒN KHO & NHẬP EXCEL)
     // =========================================================================
 
     public async Task<IActionResult> Inventory(string? search, int? khoId, string? alertFilter)
@@ -187,7 +187,7 @@ public class ManagementController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ImportStock(int khoId, int bienTheId, int soLuongNhap)
+    public async Task<IActionResult> ImportStock(int khoId, long bienTheId, int soLuongNhap, string? nhaCungCap = null, string? ghiChu = null)
     {
         if (soLuongNhap <= 0)
         {
@@ -195,10 +195,17 @@ public class ManagementController : Controller
             return RedirectToAction(nameof(Inventory));
         }
 
-        var tk = await _context.TonKhos
-            .Include(t => t.BienThe)
-            .FirstOrDefaultAsync(t => t.KhoId == khoId && t.BienTheId == bienTheId);
+        var bt = await _context.BienTheSanPhams
+            .Include(b => b.SanPham)
+            .FirstOrDefaultAsync(b => b.Id == bienTheId);
 
+        if (bt == null)
+        {
+            TempData["InventoryError"] = "Không tìm thấy phân loại sản phẩm cần nhập.";
+            return RedirectToAction(nameof(Inventory));
+        }
+
+        var tk = await _context.TonKhos.FirstOrDefaultAsync(t => t.KhoId == khoId && t.BienTheId == bienTheId);
         if (tk != null)
         {
             tk.SoLuongTon += soLuongNhap;
@@ -214,14 +221,41 @@ public class ManagementController : Controller
             });
         }
 
+        long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId);
+        var nhanVien = await _context.NhanViens.FirstOrDefaultAsync(nv => nv.NguoiDungId == userId)
+                       ?? await _context.NhanViens.FirstOrDefaultAsync();
+
+        if (nhanVien != null)
+        {
+            var phieu = new PhieuNhapKho
+            {
+                MaPhieu = "PN-" + DateTime.Now.ToString("yyMMddHHmmss"),
+                KhoId = khoId,
+                NhanVienId = nhanVien.Id,
+                NhaCungCap = string.IsNullOrWhiteSpace(nhaCungCap) ? "Nhập bổ sung nội bộ" : nhaCungCap.Trim(),
+                NgayNhap = DateTime.Now,
+                GhiChu = string.IsNullOrWhiteSpace(ghiChu) ? $"Nhập nhanh mã {bt.Sku}" : ghiChu.Trim(),
+                ChiTietPhieuNhaps = new List<ChiTietPhieuNhap>
+                {
+                    new ChiTietPhieuNhap
+                    {
+                        BienTheId = bienTheId,
+                        SoLuong = soLuongNhap,
+                        DonGia = bt.SanPham.GiaGoc > 0 ? bt.SanPham.GiaGoc : bt.GiaBan
+                    }
+                }
+            };
+            _context.PhieuNhapKhos.Add(phieu);
+        }
+
         await _context.SaveChangesAsync();
-        TempData["InventorySuccess"] = $"Đã nhập thêm +{soLuongNhap} sản phẩm vào kho thành công.";
+        TempData["InventorySuccess"] = $"Đã nhập thêm +{soLuongNhap} sản phẩm ({bt.Sku}) và lưu phiếu nhập kho thành công.";
         return RedirectToAction(nameof(Inventory));
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> AdjustStock(int khoId, int bienTheId, int soLuongMoi)
+    public async Task<IActionResult> AdjustStock(int khoId, long bienTheId, int soLuongMoi)
     {
         var tk = await _context.TonKhos
             .Include(t => t.BienThe)
@@ -271,10 +305,10 @@ public class ManagementController : Controller
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    [RequestSizeLimit(5 * 1024 * 1024)] // Giới hạn tối đa 5 MB
+    [RequestSizeLimit(5 * 1024 * 1024)]
     public async Task<IActionResult> ImportStockExcel(IFormFile? excelFile)
     {
-        const long maxFileBytes = 5 * 1024 * 1024; // 5 MB
+        const long maxFileBytes = 5 * 1024 * 1024;
 
         if (excelFile == null || excelFile.Length == 0)
         {
@@ -393,8 +427,6 @@ public class ManagementController : Controller
 
         return Json(new { ok = true, url = $"/uploads/inventory/{safeName}", fileName = file.FileName });
     }
-
-   
 
     private static List<string[]> ParseCsvRows(Stream stream)
     {
@@ -518,6 +550,98 @@ public class ManagementController : Controller
     // 3. QUẢN LÝ DANH MỤC SẢN PHẨM
     // =========================================================================
 
+    private static string NormalizeSizeType(string? rawSizeType, string categoryName, string? icon)
+    {
+        var val = (rawSizeType ?? "").Trim().ToUpperInvariant();
+        return val switch
+        {
+            "LETTER" => "LETTER",
+            "SHOE_ASIAN" or "NUMBER" or "SHOE" => "SHOE_ASIAN",
+            "ACCESSORY" or "NONE" or "ACC" => "ACCESSORY",
+            _ => InferSizeTypeFromNameOrIcon(categoryName, icon)
+        };
+    }
+
+    private static string InferSizeTypeFromNameOrIcon(string categoryName, string? icon)
+    {
+        var ic = (icon ?? "").Trim();
+        if (ic == "👟") return "SHOE_ASIAN";
+        if (ic is "👜" or "🧢" or "🕶" or "🧦") return "ACCESSORY";
+
+        var lower = (categoryName ?? "").ToLowerInvariant();
+        if (lower.Contains("giày") || lower.Contains("dép") || lower.Contains("sneaker") || lower.Contains("boot") || lower.Contains("sandal"))
+            return "SHOE_ASIAN";
+        if (lower.Contains("túi") || lower.Contains("phụ kiện") || lower.Contains("mũ") || lower.Contains("nón") || lower.Contains("thắt lưng") || lower.Contains("kính") || lower.Contains("tất") || lower.Contains("vớ"))
+            return "ACCESSORY";
+
+        return "LETTER";
+    }
+
+    private static string InferIconFromName(string categoryName)
+    {
+        var lower = (categoryName ?? "").ToLowerInvariant();
+        return lower.Contains("giày") || lower.Contains("dép") ? "👟"
+             : lower.Contains("túi") ? "👜"
+             : lower.Contains("mũ") || lower.Contains("nón") ? "🧢"
+             : lower.Contains("phụ kiện") || lower.Contains("kính") || lower.Contains("thắt lưng") ? "🕶"
+             : lower.Contains("tất") || lower.Contains("vớ") || lower.Contains("đồ lót") ? "🧦"
+             : lower.Contains("quần") ? "👖"
+             : lower.Contains("váy") || lower.Contains("đầm") || lower.Contains("chân váy") ? "👗"
+             : lower.Contains("khoác") ? "🧥"
+             : lower.Contains("sơ mi") ? "👔"
+             : lower.Contains("áo") ? "👕"
+             : "◫";
+    }
+
+    private static string EncodeCategoryMeta(string? icon, string? sizeType, string categoryName, string? description)
+    {
+        var chosenIcon = string.IsNullOrWhiteSpace(icon) ? InferIconFromName(categoryName) : icon.Trim();
+        var chosenSize = NormalizeSizeType(sizeType, categoryName, chosenIcon);
+        var cleanDesc = (description ?? "").Trim();
+
+        var prefix = $"[ICON:{chosenIcon}][SIZE:{chosenSize}]";
+        return string.IsNullOrEmpty(cleanDesc) ? prefix : $"{prefix} {cleanDesc}";
+    }
+
+    private static CategoryMetaInfo ParseCategoryMeta(string categoryName, string? rawDesc)
+    {
+        var text = rawDesc ?? "";
+        string? icon = null;
+        string? sizeType = null;
+
+        while (text.StartsWith("["))
+        {
+            var endIdx = text.IndexOf(']');
+            if (endIdx <= 1) break;
+
+            var tag = text.Substring(1, endIdx - 1);
+            if (tag.StartsWith("ICON:", StringComparison.OrdinalIgnoreCase))
+            {
+                icon = tag.Substring(5).Trim();
+                text = text.Substring(endIdx + 1).TrimStart();
+            }
+            else if (tag.StartsWith("SIZE:", StringComparison.OrdinalIgnoreCase))
+            {
+                sizeType = tag.Substring(5).Trim().ToUpperInvariant();
+                text = text.Substring(endIdx + 1).TrimStart();
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        var finalIcon = string.IsNullOrWhiteSpace(icon) ? InferIconFromName(categoryName) : icon;
+        var finalSizeType = NormalizeSizeType(sizeType, categoryName, finalIcon);
+
+        return new CategoryMetaInfo
+        {
+            Icon = finalIcon,
+            SizeType = finalSizeType,
+            Description = text
+        };
+    }
+
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Categories()
     {
@@ -528,33 +652,7 @@ public class ManagementController : Controller
 
         ViewBag.CategoryMeta = danhMucs.ToDictionary(
             dm => dm.Id,
-            dm =>
-            {
-                var rawDesc = dm.MoTa ?? "";
-                var icon = "";
-                var cleanDesc = rawDesc;
-
-                if (rawDesc.StartsWith("[ICON:") && rawDesc.Contains(']'))
-                {
-                    var endIdx = rawDesc.IndexOf(']');
-                    icon = rawDesc.Substring(6, endIdx - 6);
-                    cleanDesc = rawDesc.Substring(endIdx + 1).Trim();
-                }
-                else
-                {
-                    var lower = dm.TenDanhMuc.ToLowerInvariant();
-                    icon = lower.Contains("quần") ? "👖"
-                         : (lower.Contains("váy") || lower.Contains("đầm")) ? "👗"
-                         : lower.Contains("khoác") ? "🧥"
-                         : lower.Contains("sơ mi") ? "👔"
-                         : lower.Contains("áo") ? "👕"
-                         : (lower.Contains("giày") || lower.Contains("dép")) ? "👟"
-                         : (lower.Contains("túi") || lower.Contains("phụ kiện") || lower.Contains("mũ")) ? "👜"
-                         : "◫";
-                }
-
-                return new { Icon = icon, Description = cleanDesc };
-            });
+            dm => ParseCategoryMeta(dm.TenDanhMuc, dm.MoTa));
 
         var items = danhMucs.Select(dm => new CategoryViewModel
         {
@@ -570,7 +668,7 @@ public class ManagementController : Controller
     [Authorize(Roles = "Admin")]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreateCategory(string tenDanhMuc, string? icon, string? moTa)
+    public async Task<IActionResult> CreateCategory(string tenDanhMuc, string? icon, string? loaiSize, string? sizeType, string? moTa)
     {
         if (string.IsNullOrWhiteSpace(tenDanhMuc))
         {
@@ -585,13 +683,12 @@ public class ManagementController : Controller
             return RedirectToAction(nameof(Categories));
         }
 
-        var chosenIcon = string.IsNullOrWhiteSpace(icon) ? "👕" : icon.Trim();
-        var cleanMoTa = (moTa ?? "").Trim();
+        var chosenSize = !string.IsNullOrWhiteSpace(loaiSize) ? loaiSize : sizeType;
 
         _context.DanhMucs.Add(new DanhMuc
         {
             TenDanhMuc = ten,
-            MoTa = string.IsNullOrEmpty(cleanMoTa) ? $"[ICON:{chosenIcon}]" : $"[ICON:{chosenIcon}] {cleanMoTa}",
+            MoTa = EncodeCategoryMeta(icon, chosenSize, ten, moTa),
             TrangThai = true,
             ThoiGianTao = DateTime.Now
         });
@@ -604,7 +701,7 @@ public class ManagementController : Controller
     [Authorize(Roles = "Admin")]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> EditCategory(int id, string tenDanhMuc, string? icon, string? moTa)
+    public async Task<IActionResult> EditCategory(int id, string tenDanhMuc, string? icon, string? loaiSize, string? sizeType, string? moTa)
     {
         var dm = await _context.DanhMucs.FindAsync(id);
         if (dm == null || string.IsNullOrWhiteSpace(tenDanhMuc))
@@ -620,11 +717,12 @@ public class ManagementController : Controller
             return RedirectToAction(nameof(Categories));
         }
 
-        var chosenIcon = string.IsNullOrWhiteSpace(icon) ? "👕" : icon.Trim();
-        var cleanMoTa = (moTa ?? "").Trim();
+        var existingMeta = ParseCategoryMeta(ten, dm.MoTa);
+        var chosenSize = !string.IsNullOrWhiteSpace(loaiSize) ? loaiSize : sizeType;
+        var effectiveSizeType = !string.IsNullOrWhiteSpace(chosenSize) ? chosenSize : existingMeta.SizeType;
 
         dm.TenDanhMuc = ten;
-        dm.MoTa = string.IsNullOrEmpty(cleanMoTa) ? $"[ICON:{chosenIcon}]" : $"[ICON:{chosenIcon}] {cleanMoTa}";
+        dm.MoTa = EncodeCategoryMeta(icon, effectiveSizeType, ten, moTa);
         await _context.SaveChangesAsync();
 
         TempData["CategorySuccess"] = $"Đã cập nhật danh mục \"{ten}\" thành công.";
@@ -673,12 +771,39 @@ public class ManagementController : Controller
     // 4. QUẢN LÝ SẢN PHẨM, TỰ ĐỘNG TÍNH LỢI NHUẬN & GỢI Ý XU HƯỚNG
     // =========================================================================
 
+    private async Task<int> ResolveMauSacIdAsync(int? mauSacId, string? tenMauMoi)
+    {
+        var cleanName = (tenMauMoi ?? "").Trim();
+        if (!string.IsNullOrWhiteSpace(cleanName))
+        {
+            var existing = await _context.MauSacs
+                .FirstOrDefaultAsync(m => m.TenMau.ToLower() == cleanName.ToLower());
+
+            if (existing != null)
+                return existing.Id;
+
+            var newColor = new MauSac
+            {
+                TenMau = cleanName
+            };
+            _context.MauSacs.Add(newColor);
+            await _context.SaveChangesAsync();
+            return newColor.Id;
+        }
+
+        if (mauSacId.HasValue && mauSacId.Value > 0)
+            return mauSacId.Value;
+
+        var fallback = await _context.MauSacs.FirstOrDefaultAsync();
+        return fallback?.Id ?? 1;
+    }
+
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Products(string? search, int? categoryId, string? status)
     {
         ViewBag.Categories = await _context.DanhMucs.Where(d => d.TrangThai).ToListAsync();
         ViewBag.Sizes = await _context.KichThuocs.OrderBy(k => k.ThuTu).ToListAsync();
-        ViewBag.Colors = await _context.MauSacs.ToListAsync();
+        ViewBag.Colors = await _context.MauSacs.OrderBy(m => m.TenMau).ToListAsync();
         ViewBag.Search = search;
         ViewBag.SelectedCategory = categoryId;
         ViewBag.SelectedStatus = status;
@@ -709,7 +834,6 @@ public class ManagementController : Controller
             .OrderByDescending(sp => sp.ThoiGianTao)
             .ToListAsync();
 
-        // Thống kê lượng bán 30 ngày gần nhất theo sản phẩm để phân tích xu hướng
         var since30Days = DateTime.Now.AddDays(-30);
         var sold30Dict = await _context.DonHangChiTiets
             .Where(ct => ct.DonHang.ThoiGianTao >= since30Days && ct.DonHang.TrangThai != "Da_huy")
@@ -770,7 +894,6 @@ public class ManagementController : Controller
                 };
             });
 
-        // Tạo gợi ý điều chỉnh % lợi nhuận & chương trình giảm giá theo xu hướng bán hàng
         var pricingAdvices = new Dictionary<int, ProductTrendAdvice>();
         foreach (var sp in sanPhams)
         {
@@ -785,7 +908,6 @@ public class ManagementController : Controller
 
             if (sold30 >= 5)
             {
-                // Xu hướng BÁN CHẠY -> Gợi ý tăng biên lợi nhuận thêm +5% hoặc +8%
                 var boost = sold30 >= 10 ? 8m : 5m;
                 var suggestedMargin = currentMargin + boost;
                 var suggestedPrice = Math.Round(cost * (1 + suggestedMargin / 100m) / 1000m) * 1000m;
@@ -806,8 +928,7 @@ public class ManagementController : Controller
             }
             else if (availableStock >= 8 && sold30 <= 1)
             {
-                // Xu hướng BÁN CHẬM / TỒN NHIỀU -> Gợi ý hạ biên lợi nhuận & tạo mã giảm giá kích cầu
-                var safeFloorPrice = Math.Round(cost * 1.05m / 1000m) * 1000m; // Giữ tối thiểu 5% lãi trên vốn
+                var safeFloorPrice = Math.Round(cost * 1.05m / 1000m) * 1000m;
                 var maxSafeDiscount = sp.GiaBan > safeFloorPrice
                     ? (int)Math.Floor((sp.GiaBan - safeFloorPrice) * 100m / sp.GiaBan)
                     : 0;
@@ -871,7 +992,8 @@ public class ManagementController : Controller
         decimal tyLeLoiNhuan,
         decimal? giaBan,
         int kichThuocId,
-        int mauSacId,
+        int? mauSacId,
+        string? tenMauMoi,
         int soLuongTon,
         string? imageUrl,
         string? moTa)
@@ -882,7 +1004,8 @@ public class ManagementController : Controller
             return RedirectToAction(nameof(Products));
         }
 
-        // Tự động tính giá bán theo % lợi nhuận nếu không nhập đè thủ công
+        var resolvedColorId = await ResolveMauSacIdAsync(mauSacId, tenMauMoi);
+
         var computedPrice = Math.Round(giaGoc * (1 + Math.Max(0, tyLeLoiNhuan) / 100m) / 1000m) * 1000m;
         var finalPrice = (giaBan.HasValue && giaBan.Value > 0) ? giaBan.Value : computedPrice;
 
@@ -905,9 +1028,9 @@ public class ManagementController : Controller
         var bienThe = new BienTheSanPham
         {
             SanPhamId = sp.Id,
-            Sku = $"{maSp}-S{kichThuocId}-M{mauSacId}",
+            Sku = $"{maSp}-S{kichThuocId}-M{resolvedColorId}",
             KichThuocId = kichThuocId,
-            MauSacId = mauSacId,
+            MauSacId = resolvedColorId,
             GiaBan = finalPrice,
             TrangThai = true
         };
@@ -977,7 +1100,6 @@ public class ManagementController : Controller
         sp.MoTa = moTa?.Trim();
         sp.ThoiGianCapNhat = DateTime.Now;
 
-        // Đồng bộ giá bán cho các phân loại đang dùng giá cơ bản cũ
         foreach (var bt in sp.BienTheSanPhams)
         {
             bt.GiaBan = finalPrice;
@@ -1006,7 +1128,6 @@ public class ManagementController : Controller
         return RedirectToAction(nameof(Products));
     }
 
-    // Áp dụng nhanh gợi ý % lợi nhuận theo xu hướng bán hàng
     [Authorize(Roles = "Admin")]
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -1033,6 +1154,164 @@ public class ManagementController : Controller
         TempData["ProductSuccess"] = $"Đã điều chỉnh lợi nhuận \"{sp.TenSanPham}\" thành {newMarginPercent:0.#}% → Giá bán mới: {newPrice:N0} đ.";
         return RedirectToAction(nameof(Products));
     }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteProduct(int id)
+    {
+        var sp = await _context.SanPhams
+            .Include(s => s.BienTheSanPhams)
+                .ThenInclude(bt => bt.DonHangChiTiets)
+            .Include(s => s.BienTheSanPhams)
+                .ThenInclude(bt => bt.TonKhos)
+            .Include(s => s.SanPhamAnhs)
+            .FirstOrDefaultAsync(s => s.Id == id);
+
+        if (sp == null) return RedirectToAction(nameof(Products));
+
+        bool hasOrders = sp.BienTheSanPhams.Any(bt => bt.DonHangChiTiets.Count > 0);
+        if (hasOrders)
+        {
+            sp.TrangThai = "Ngung_ban";
+            sp.ThoiGianCapNhat = DateTime.Now;
+            foreach (var bt in sp.BienTheSanPhams) bt.TrangThai = false;
+            await _context.SaveChangesAsync();
+            TempData["ProductSuccess"] = $"Sản phẩm \"{sp.TenSanPham}\" đã có lịch sử đơn hàng nên hệ thống chuyển sang trạng thái Ngừng bán.";
+            return RedirectToAction(nameof(Products));
+        }
+
+        foreach (var bt in sp.BienTheSanPhams)
+        {
+            _context.TonKhos.RemoveRange(bt.TonKhos);
+        }
+        _context.BienTheSanPhams.RemoveRange(sp.BienTheSanPhams);
+        _context.SanPhamAnhs.RemoveRange(sp.SanPhamAnhs);
+        _context.SanPhams.Remove(sp);
+        await _context.SaveChangesAsync();
+
+        TempData["ProductSuccess"] = $"Đã xóa sản phẩm \"{sp.TenSanPham}\" khỏi hệ thống.";
+        return RedirectToAction(nameof(Products));
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddVariant(int sanPhamId, int kichThuocId, int? mauSacId, string? tenMauMoi, decimal giaBan)
+    {
+        var sp = await _context.SanPhams
+            .Include(s => s.BienTheSanPhams)
+            .FirstOrDefaultAsync(s => s.Id == sanPhamId);
+
+        if (sp == null || giaBan <= 0)
+        {
+            TempData["ProductError"] = "Thông tin phân loại không hợp lệ.";
+            return RedirectToAction(nameof(Products));
+        }
+
+        var resolvedColorId = await ResolveMauSacIdAsync(mauSacId, tenMauMoi);
+
+        if (sp.BienTheSanPhams.Any(bt => bt.KichThuocId == kichThuocId && bt.MauSacId == resolvedColorId))
+        {
+            TempData["ProductError"] = "Cặp Size và Màu sắc này đã tồn tại trong sản phẩm.";
+            TempData["OpenVariantProductId"] = sanPhamId;
+            return RedirectToAction(nameof(Products));
+        }
+
+        var newVariant = new BienTheSanPham
+        {
+            SanPhamId = sanPhamId,
+            Sku = $"{sp.MaSanPham}-S{kichThuocId}-M{resolvedColorId}-{DateTime.Now:mmss}",
+            KichThuocId = kichThuocId,
+            MauSacId = resolvedColorId,
+            GiaBan = giaBan,
+            TrangThai = true
+        };
+        _context.BienTheSanPhams.Add(newVariant);
+        await _context.SaveChangesAsync();
+
+        var khoMacDinh = await _context.Khos.FirstOrDefaultAsync(k => k.TrangThai);
+        if (khoMacDinh != null)
+        {
+            _context.TonKhos.Add(new TonKho
+            {
+                KhoId = khoMacDinh.Id,
+                BienTheId = newVariant.Id,
+                SoLuongTon = 0,
+                SoLuongGiuCho = 0
+            });
+            await _context.SaveChangesAsync();
+        }
+
+        TempData["ProductSuccess"] = $"Đã thêm phân loại mới ({newVariant.Sku}) với tồn kho ban đầu = 0.";
+        TempData["OpenVariantProductId"] = sanPhamId;
+        return RedirectToAction(nameof(Products));
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> EditVariant(long variantId, int sanPhamId, int kichThuocId, int? mauSacId, string? tenMauMoi, decimal giaBan, bool trangThai)
+    {
+        var bt = await _context.BienTheSanPhams.FirstOrDefaultAsync(x => x.Id == variantId && x.SanPhamId == sanPhamId);
+        if (bt == null || giaBan <= 0)
+        {
+            TempData["ProductError"] = "Không tìm thấy phân loại cần cập nhật.";
+            return RedirectToAction(nameof(Products));
+        }
+
+        var resolvedColorId = await ResolveMauSacIdAsync(mauSacId, tenMauMoi);
+
+        bool duplicate = await _context.BienTheSanPhams.AnyAsync(x =>
+            x.SanPhamId == sanPhamId && x.Id != variantId && x.KichThuocId == kichThuocId && x.MauSacId == resolvedColorId);
+        if (duplicate)
+        {
+            TempData["ProductError"] = "Cặp Size và Màu sắc này bị trùng với phân loại khác.";
+            TempData["OpenVariantProductId"] = sanPhamId;
+            return RedirectToAction(nameof(Products));
+        }
+
+        bt.KichThuocId = kichThuocId;
+        bt.MauSacId = resolvedColorId;
+        bt.GiaBan = giaBan;
+        bt.TrangThai = trangThai;
+        await _context.SaveChangesAsync();
+
+        TempData["ProductSuccess"] = $"Đã cập nhật phân loại {bt.Sku}.";
+        TempData["OpenVariantProductId"] = sanPhamId;
+        return RedirectToAction(nameof(Products));
+    }
+
+    [Authorize(Roles = "Admin")]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> DeleteVariant(long variantId, int sanPhamId)
+    {
+        var bt = await _context.BienTheSanPhams
+            .Include(x => x.DonHangChiTiets)
+            .Include(x => x.TonKhos)
+            .FirstOrDefaultAsync(x => x.Id == variantId && x.SanPhamId == sanPhamId);
+
+        if (bt == null) return RedirectToAction(nameof(Products));
+
+        if (bt.DonHangChiTiets.Count > 0)
+        {
+            bt.TrangThai = false;
+            await _context.SaveChangesAsync();
+            TempData["ProductSuccess"] = $"Phân loại {bt.Sku} đã phát sinh đơn hàng nên được chuyển sang Tạm ẩn.";
+        }
+        else
+        {
+            _context.TonKhos.RemoveRange(bt.TonKhos);
+            _context.BienTheSanPhams.Remove(bt);
+            await _context.SaveChangesAsync();
+            TempData["ProductSuccess"] = $"Đã xóa phân loại {bt.Sku}.";
+        }
+
+        TempData["OpenVariantProductId"] = sanPhamId;
+        return RedirectToAction(nameof(Products));
+    }
+
     // =========================================================================
     // 5. QUẢN LÝ NGƯỜI DÙNG
     // =========================================================================
@@ -1197,13 +1476,16 @@ public class ManagementController : Controller
     // =========================================================================
 
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Promotions()
+    public async Task<IActionResult> Promotions(string? prefillCode = null, int? prefillDiscount = null, string? prefillName = null)
     {
         var now = DateTime.Now;
         var vouchers = await _context.MaGiamGia
             .OrderByDescending(v => v.Id)
             .ToListAsync();
 
+        ViewBag.PrefillCode = prefillCode;
+        ViewBag.PrefillDiscount = prefillDiscount;
+        ViewBag.PrefillName = prefillName;
         ViewBag.ActiveCount = vouchers.Count(v => v.TrangThai && v.NgayBatDau <= now && v.NgayKetThuc >= now);
         ViewBag.UsedCount = vouchers.Sum(v => v.SoLuongDaDung);
         ViewBag.EndingSoonCount = vouchers.Count(v => v.TrangThai && v.NgayKetThuc >= now && v.NgayKetThuc <= now.AddDays(7));
@@ -1361,23 +1643,46 @@ public class ManagementController : Controller
     // 9. BÁO CÁO & THỐNG KÊ DOANH THU + XUẤT & LƯU TRỮ FILE PDF
     // =========================================================================
 
-    [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Reports(int? year, int? month)
-    {
-        var selectedYear = year ?? DateTime.Today.Year;
-        var selectedMonth = (month is >= 1 and <= 12) ? month.Value : DateTime.Today.Month;
+   [Authorize(Roles = "Admin")]
+public async Task<IActionResult> Reports(int? year, int? month)
+{
+    var currentYear = DateTime.Today.Year;
 
-        var data = await BuildReportSnapshotAsync(selectedYear, selectedMonth);
+    var minOrderYear = await _context.DonHangs
+        .Select(d => (int?)d.ThoiGianTao.Year)
+        .MinAsync();
 
-        ViewBag.SelectedYear = selectedYear;
-        ViewBag.SelectedMonth = selectedMonth;
-        ViewBag.ReportData = data;
-        ViewBag.SavedReports = GetSavedReportFiles();
+    var minUserYear = await _context.NguoiDungs
+        .Select(u => (int?)u.ThoiGianTao.Year)
+        .MinAsync();
 
-        return View();
-    }
+    var candidateYears = new[] { minOrderYear, minUserYear }
+        .Where(y => y.HasValue && y.Value > 2000 && y.Value <= currentYear)
+        .Select(y => y!.Value)
+        .ToList();
 
-    // Xem bản chứng từ báo cáo khổ A4 trên web (tương tự trang Hóa đơn)
+    var startYear = candidateYears.Count > 0 ? candidateYears.Min() : currentYear;
+
+    var selectedYear = (year.HasValue && year.Value >= startYear && year.Value <= currentYear)
+        ? year.Value
+        : currentYear;
+
+    var selectedMonth = (month is >= 1 and <= 12)
+        ? month.Value
+        : (selectedYear == currentYear ? DateTime.Today.Month : 1);
+
+    var data = await BuildReportSnapshotAsync(selectedYear, selectedMonth);
+
+    ViewBag.StartYear = startYear;
+    ViewBag.CurrentYear = currentYear;
+    ViewBag.SelectedYear = selectedYear;
+    ViewBag.SelectedMonth = selectedMonth;
+    ViewBag.ReportData = data;
+    ViewBag.SavedReports = GetSavedReportFiles();
+
+    return View();
+}
+
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> ReportDocument(int? year, int? month)
     {
@@ -1388,7 +1693,6 @@ public class ManagementController : Controller
         return View(data);
     }
 
-    // Xuất file PDF thật, lưu vào wwwroot/reports/ và trả file tải về máy
     [Authorize(Roles = "Admin")]
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -1413,7 +1717,6 @@ public class ManagementController : Controller
                 page.PageColor(Colors.White);
                 page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(10).FontColor("#1E293B"));
 
-                // Tiêu đề chứng từ báo cáo
                 page.Header().Column(col =>
                 {
                     col.Item().Row(row =>
@@ -1433,17 +1736,15 @@ public class ManagementController : Controller
 
                     col.Item().PaddingTop(10).BorderBottom(1.5f).BorderColor("#CBD5E1").PaddingBottom(8).AlignCenter().Column(titleCol =>
                     {
-                        titleCol.Item().Text($"BÁO CÁO TỔNG HỢP DOANH THU & BÁN HÀNG").FontSize(15).Bold().FontColor("#0F172A");
+                        titleCol.Item().Text("BÁO CÁO TỔNG HỢP DOANH THU & BÁN HÀNG").FontSize(15).Bold().FontColor("#0F172A");
                         titleCol.Item().Text($"Kỳ báo cáo: Tháng {selectedMonth:00}/{selectedYear} (Lũy kế năm {selectedYear})").FontSize(10.5f).FontColor("#475569");
                     });
                 });
 
-                // Nội dung chính
                 page.Content().PaddingVertical(14).Column(col =>
                 {
                     col.Spacing(14);
 
-                    // 1. Khối 4 chỉ số KPI tháng
                     col.Item().Text($"I. CHỈ SỐ HOẠT ĐỘNG THÁNG {selectedMonth:00}/{selectedYear}").FontSize(11).Bold().FontColor("#0F172A");
                     col.Item().Row(row =>
                     {
@@ -1460,11 +1761,10 @@ public class ManagementController : Controller
 
                         KpiBox("DOANH THU THÁNG", $"{data.MonthRevenue:N0} đ", $"Cả năm: {data.YearRevenue:N0} đ");
                         KpiBox("ĐƠN HÀNG HỢP LỆ", $"{data.MonthOrders} đơn", $"Hoàn tất: {data.CompletedOrders} | Hủy: {data.CancelledOrders}");
-                        KpiBox("KHÁCH HÀNG MỚI", $"{data.NewCustomers} khách", $"Tài khoản đăng ký mới");
-                        KpiBox("GIÁ TRỊ ĐƠN TB", $"{data.AvgOrder:N0} đ", $"Trung bình / đơn hợp lệ");
+                        KpiBox("KHÁCH HÀNG MỚI", $"{data.NewCustomers} khách", "Tài khoản đăng ký mới");
+                        KpiBox("GIÁ TRỊ ĐƠN TB", $"{data.AvgOrder:N0} đ", "Trung bình / đơn hợp lệ");
                     });
 
-                    // 2. Bảng chi tiết doanh thu 12 tháng
                     col.Item().Text($"II. BẢNG THỐNG KÊ DOANH THU 12 THÁNG NĂM {selectedYear}").FontSize(11).Bold().FontColor("#0F172A");
                     col.Item().Table(table =>
                     {
@@ -1490,7 +1790,7 @@ public class ManagementController : Controller
                             HCell("Giá trị TB / đơn", true);
                         });
 
-                       foreach (var m in data.MonthlyBreakdown)
+                        foreach (var m in data.MonthlyBreakdown)
                         {
                             var bg = m.Month == selectedMonth ? "#EEF2FF" : (m.Month % 2 == 0 ? "#F8FAFC" : "#FFFFFF");
 
@@ -1506,7 +1806,6 @@ public class ManagementController : Controller
                         }
                     });
 
-                    // 3. Top sản phẩm bán chạy
                     col.Item().Text($"III. TOP SẢN PHẨM BÁN CHẠY NĂM {selectedYear}").FontSize(11).Bold().FontColor("#0F172A");
                     col.Item().Table(table =>
                     {
@@ -1543,7 +1842,6 @@ public class ManagementController : Controller
                         }
                     });
 
-                    // 4. Chữ ký xác nhận
                     col.Item().PaddingTop(14).Row(row =>
                     {
                         row.RelativeItem().AlignCenter().Column(c =>
@@ -1574,7 +1872,6 @@ public class ManagementController : Controller
             });
         }).GeneratePdf();
 
-        // Lưu trữ bản sao PDF vào wwwroot/reports/
         var reportDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "reports");
         Directory.CreateDirectory(reportDir);
 
@@ -1711,6 +2008,87 @@ public class ManagementController : Controller
             })
             .ToList();
     }
+
+    // =========================================================================
+    // 9B. QUẢN LÝ & ĐỐI SOÁT THANH TOÁN CHUYỂN KHOẢN
+    // =========================================================================
+
+    [HttpGet]
+    public async Task<IActionResult> Payments(string? search, string? payStatus)
+    {
+        var allTransfer = await _context.DonHangs
+            .AsNoTracking()
+            .Where(o => o.PhuongThucThanhToan != null && o.PhuongThucThanhToan != "COD")
+            .OrderByDescending(o => o.ThoiGianTao)
+            .ToListAsync();
+
+        ViewBag.UnpaidCount = allTransfer.Count(o =>
+            !string.Equals((o.TrangThaiThanhToan ?? "").Trim(), "Da_thanh_toan", StringComparison.OrdinalIgnoreCase));
+        ViewBag.PaidCount = allTransfer.Count(o =>
+            string.Equals((o.TrangThaiThanhToan ?? "").Trim(), "Da_thanh_toan", StringComparison.OrdinalIgnoreCase));
+        ViewBag.PaidAmount = allTransfer
+            .Where(o => string.Equals((o.TrangThaiThanhToan ?? "").Trim(), "Da_thanh_toan", StringComparison.OrdinalIgnoreCase))
+            .Sum(o => o.TongThanhToan);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.Trim().ToLowerInvariant();
+            allTransfer = allTransfer.Where(o =>
+                (o.MaDonHang ?? "").ToLowerInvariant().Contains(s) ||
+                (o.TenNguoiNhan ?? "").ToLowerInvariant().Contains(s) ||
+                (o.DienThoaiNhan ?? "").ToLowerInvariant().Contains(s)
+            ).ToList();
+        }
+
+        if (!string.IsNullOrWhiteSpace(payStatus))
+        {
+            var target = payStatus.Trim();
+            allTransfer = allTransfer.Where(o =>
+                string.Equals((o.TrangThaiThanhToan ?? "Chua_thanh_toan").Trim(), target, StringComparison.OrdinalIgnoreCase)
+            ).ToList();
+        }
+
+        ViewBag.Search = search;
+        ViewBag.PayStatus = payStatus;
+        return View(allTransfer);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ConfirmPayment(long id)
+    {
+        var order = await _context.DonHangs.FirstOrDefaultAsync(o => o.Id == id);
+        if (order == null)
+        {
+            TempData["PayError"] = "Không tìm thấy đơn hàng.";
+            return RedirectToAction(nameof(Payments));
+        }
+
+        order.TrangThaiThanhToan = "Da_thanh_toan";
+        await _context.SaveChangesAsync();
+
+        TempData["PaySuccess"] = $"Đã xác nhận thanh toán chuyển khoản cho đơn {order.MaDonHang}.";
+        return RedirectToAction(nameof(Payments));
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ResetPaymentStatus(long id)
+    {
+        var order = await _context.DonHangs.FirstOrDefaultAsync(o => o.Id == id);
+        if (order == null)
+        {
+            TempData["PayError"] = "Không tìm thấy đơn hàng.";
+            return RedirectToAction(nameof(Payments));
+        }
+
+        order.TrangThaiThanhToan = "Chua_thanh_toan";
+        await _context.SaveChangesAsync();
+
+        TempData["PaySuccess"] = $"Đã chuyển đơn {order.MaDonHang} về trạng thái chờ xác nhận thanh toán.";
+        return RedirectToAction(nameof(Payments));
+    }
+
     // =========================================================================
     // 10. QUẢN LÝ KHU VỰC GIAO HÀNG (TỈNH / THÀNH PHỐ)
     // =========================================================================
@@ -1809,7 +2187,13 @@ public class ManagementController : Controller
         }
         return RedirectToAction(nameof(Provinces));
     }
-   
+}
+
+public class CategoryMetaInfo
+{
+    public string Icon { get; set; } = "👕";
+    public string SizeType { get; set; } = "LETTER";
+    public string Description { get; set; } = "";
 }
 
 public class ProductVariantInfo
@@ -1826,6 +2210,7 @@ public class ProductVariantInfo
     public int Available { get; set; }
     public bool TrangThai { get; set; }
 }
+
 public class SalesReportSnapshot
 {
     public string ReportCode { get; set; } = "";
@@ -1871,12 +2256,13 @@ public class SavedReportFileInfo
     public DateTime CreatedAt { get; set; }
     public long SizeKb { get; set; }
 }
+
 public class ProductTrendAdvice
 {
     public int ProductId { get; set; }
     public string ProductName { get; set; } = "";
     public string ProductCode { get; set; } = "";
-    public string TrendType { get; set; } = "normal"; // hot | slow | normal
+    public string TrendType { get; set; } = "normal";
     public string TrendLabel { get; set; } = "";
     public string Summary { get; set; } = "";
     public decimal CurrentMargin { get; set; }

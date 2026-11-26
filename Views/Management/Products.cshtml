@@ -5,7 +5,9 @@
 @{
     ViewData["Title"] = "Quản lý sản phẩm";
     var categories = ViewBag.Categories as List<DanhMuc> ?? new();
+    var categorySizeTypeMap = ViewBag.CategorySizeTypeMap as Dictionary<int, string> ?? new();
     var sizes = ViewBag.Sizes as List<KichThuoc> ?? new();
+    var sizeGroupMap = ViewBag.SizeGroupMap as Dictionary<int, string> ?? new();
     var colors = ViewBag.Colors as List<MauSac> ?? new();
     var variantMap = ViewBag.ProductVariants as Dictionary<int, List<ProductVariantInfo>> ?? new();
     var pricingAdvices = ViewBag.PricingAdvices as Dictionary<int, ProductTrendAdvice> ?? new();
@@ -16,6 +18,13 @@
 
     var variantsJson = JsonSerializer.Serialize(variantMap);
     var metaJson = JsonSerializer.Serialize(productMeta);
+    var catSizeMapJson = JsonSerializer.Serialize(categorySizeTypeMap);
+    var sizesJson = JsonSerializer.Serialize(sizes.Select(s => new
+    {
+        s.Id,
+        s.MaSize,
+        Group = sizeGroupMap.TryGetValue(s.Id, out var grp) ? grp : "LETTER"
+    }));
     var adviceList = pricingAdvices.Values.ToList();
 }
 
@@ -52,7 +61,51 @@
     .act-danger { color: #dc2626; border-color: #fecaca; background: #fef2f2; }
     .act-danger:hover { background: #fee2e2; }
 
-    /* Khung Ước tính lợi nhuận trực quan */
+    .color-picker-wrap { position: relative; }
+    .color-suggest-popover {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        min-width: 170px;
+        max-width: 240px;
+        max-height: 170px;
+        overflow-y: auto;
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        border-radius: 8px;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+        z-index: 60;
+        padding: 4px;
+    }
+    .color-suggest-item {
+        display: block;
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        border-radius: 6px;
+        padding: 6px 10px;
+        font-size: 12.5px;
+        color: #1e293b;
+        cursor: pointer;
+    }
+    .color-suggest-item:hover {
+        background: #eef2ff;
+        color: #4f46e5;
+        font-weight: 600;
+    }
+
+    .size-mode-badge {
+        display: inline-block;
+        margin-left: 6px;
+        padding: 1px 7px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 600;
+        background: #eef2ff;
+        color: #4f46e5;
+    }
+
     .profit-estimator-box {
         grid-column: 1 / -1;
         background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%);
@@ -90,7 +143,6 @@
     .profit-kpi-item small { display: block; font-size: 11.5px; color: #64748b; }
     .profit-kpi-item strong { font-size: 15px; color: #0f172a; }
 
-    /* Dải gợi ý điều chỉnh lợi nhuận & tạo mã giảm giá theo xu hướng */
     .trend-advisor-banner {
         background: #ffffff;
         border: 1px solid #e2e8f0;
@@ -164,10 +216,11 @@
     <form method="post" asp-action="CreateProduct" asp-controller="Management" class="form-grid-admin">
         @Html.AntiForgeryToken()
         <label>Tên sản phẩm
-            <input name="tenSanPham" required placeholder="VD: Áo polo nam Pique" />
+            <input name="tenSanPham" required placeholder="Nhập tên sản phẩm" />
         </label>
         <label>Danh mục
-            <select name="danhMucId" required>
+            <select name="danhMucId" id="create-cat-select" required onchange="onCreateCategoryChange()">
+                <option value="">-- Chọn danh mục --</option>
                 @foreach (var c in categories)
                 {
                     <option value="@c.Id">@c.TenDanhMuc</option>
@@ -175,64 +228,73 @@
             </select>
         </label>
         <label>Giá gốc / Giá nhập (VNĐ)
-            <input type="number" name="giaGoc" id="create-cost" min="1000" step="1000" value="200000" required oninput="recalcCreatePricing('margin')" />
+            <input type="number" name="giaGoc" id="create-cost" min="1000" step="1000" required oninput="recalcCreatePricing('margin')" />
         </label>
         <label>Tỷ lệ lợi nhuận (%)
-            <input type="number" name="tyLeLoiNhuan" id="create-margin" min="0" max="500" step="0.5" value="35" required oninput="recalcCreatePricing('margin')" />
+            <input type="number" name="tyLeLoiNhuan" id="create-margin" min="0" max="500" step="0.5" required oninput="recalcCreatePricing('margin')" />
         </label>
-        <label>Giá bán ra tự động (VNĐ)
-            <input type="number" name="giaBan" id="create-price" min="1000" step="1000" value="270000" required oninput="recalcCreatePricing('price')" />
+        <label>Giá bán ra (VNĐ)
+            <input type="number" name="giaBan" id="create-price" min="1000" step="1000" required oninput="recalcCreatePricing('price')" />
         </label>
         <label>Tồn kho ban đầu
-            <input type="number" name="soLuongTon" id="create-qty" min="0" value="10" required oninput="recalcCreatePricing('margin')" />
+            <input type="number" name="soLuongTon" id="create-qty" min="0" required oninput="recalcCreatePricing('margin')" />
         </label>
-        <label>Size mặc định
-            <select name="kichThuocId">
-                @foreach (var s in sizes)
-                {
-                    <option value="@s.Id">@s.MaSize</option>
-                }
+        <label>
+            <span>
+                <span id="create-size-label">Size mặc định</span>
+                <span id="create-size-badge" class="size-mode-badge">Size chữ (Quần áo)</span>
+            </span>
+            <select name="kichThuocId" id="create-size-select" required>
+                <option value="">-- Chọn size --</option>
             </select>
         </label>
-        <label>Màu mặc định
-            <select name="mauSacId">
-                @foreach (var m in colors)
-                {
-                    <option value="@m.Id">@m.TenMau</option>
-                }
-            </select>
+        <label id="create-custom-acc-wrap" hidden>
+            Hoặc nhập đại lượng / quy cách riêng
+            <input type="text" name="tenKichThuocMoi" id="create-custom-acc-input" placeholder="VD: Free Size, Dây 105cm, 300ml..." />
         </label>
+        <div class="color-picker-wrap">
+            <label style="display:block">Màu sắc (chọn hoặc nhập màu)
+                <input type="text"
+                       name="tenMauMoi"
+                       id="create-color-input"
+                       placeholder="Chọn hoặc nhập màu sắc"
+                       autocomplete="off"
+                       required
+                       onfocus="showColorPopover('create-color-popover', 'create-color-input')"
+                       oninput="renderColorPopover('create-color-popover', 'create-color-input')" />
+            </label>
+            <div id="create-color-popover" class="color-suggest-popover" hidden></div>
+        </div>
         <label>URL ảnh đại diện
-            <input name="imageUrl" placeholder="https://..." />
+            <input name="imageUrl" placeholder="Nhập đường dẫn ảnh" />
         </label>
         <label>Mô tả ngắn
-            <input name="moTa" placeholder="Chất liệu, form dáng..." />
+            <input name="moTa" placeholder="Nhập mô tả sản phẩm" />
         </label>
 
-        <!-- Bảng ước tính lợi nhuận thời gian thực -->
         <div class="profit-estimator-box">
             <div>
                 <div style="font-size:12.5px;font-weight:700;color:#3730a3;margin-bottom:6px">📊 Ước tính lợi nhuận bán hàng</div>
                 <div class="margin-presets">
-                    <span style="font-size:12px;color:#64748b">Chọn nhanh mức lãi:</span>
-                    <button type="button" class="preset-chip" onclick="setCreateMargin(20)">+20% (Cạnh tranh)</button>
-                    <button type="button" class="preset-chip" onclick="setCreateMargin(35)">+35% (Tiêu chuẩn)</button>
-                    <button type="button" class="preset-chip" onclick="setCreateMargin(50)">+50% (Cao cấp)</button>
-                    <button type="button" class="preset-chip" onclick="setCreateMargin(70)">+70% (Phụ kiện)</button>
+                    <span style="font-size:12px;color:#64748b">Mức lợi nhuận nhanh:</span>
+                    <button type="button" class="preset-chip" onclick="setCreateMargin(20)">+20%</button>
+                    <button type="button" class="preset-chip" onclick="setCreateMargin(35)">+35%</button>
+                    <button type="button" class="preset-chip" onclick="setCreateMargin(50)">+50%</button>
+                    <button type="button" class="preset-chip" onclick="setCreateMargin(70)">+70%</button>
                 </div>
             </div>
             <div class="profit-kpis">
                 <div class="profit-kpi-item">
                     <small>Lãi ròng / 1 sản phẩm</small>
-                    <strong id="est-create-unit-profit" style="color:#15803d">+70,000 đ</strong>
+                    <strong id="est-create-unit-profit" style="color:#15803d">0 đ</strong>
                 </div>
                 <div class="profit-kpi-item">
                     <small>Biên lãi trên doanh thu</small>
-                    <strong id="est-create-rev-margin">25.9%</strong>
+                    <strong id="est-create-rev-margin">0.0%</strong>
                 </div>
                 <div class="profit-kpi-item">
                     <small>Tổng lãi dự kiến lô nhập</small>
-                    <strong id="est-create-batch-profit" style="color:#4f46e5">+700,000 đ</strong>
+                    <strong id="est-create-batch-profit" style="color:#4f46e5">0 đ</strong>
                 </div>
             </div>
         </div>
@@ -243,10 +305,10 @@
     </form>
 </section>
 
-<!-- 2. KHUNG CHỈNH SỬA SẢN PHẨM + CẬP NHẬT LỢI NHUẬN -->
+<!-- 2. KHUNG CHỈNH SỬA SẢN PHẨM + CẬP NHẬT GIÁ & LỢI NHUẬN -->
 <section id="edit-product-box" class="panel" hidden style="margin-bottom:20px;padding:18px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-        <h3 style="margin:0">Chỉnh sửa sản phẩm & Tỷ lệ lợi nhuận</h3>
+        <h3 style="margin:0">Chỉnh sửa sản phẩm, giá bán & tỷ lệ lợi nhuận</h3>
         <button type="button" class="act-btn" onclick="closeAllProdPanels()">✕</button>
     </div>
     <form method="post" asp-action="EditProduct" asp-controller="Management" class="form-grid-admin">
@@ -290,15 +352,18 @@
     </form>
 </section>
 
-<!-- 3. PANEL QUẢN LÝ PHÂN LOẠI SIZE / MÀU -->
+<!-- 3. PANEL QUẢN LÝ PHÂN LOẠI SIZE / QUY CÁCH & MÀU -->
 <section id="variant-manager-box" class="variant-drawer" hidden>
     <div class="variant-drawer-head">
         <div>
-            <h3 style="margin:0;font-size:16px">Quản lý phân loại Size & Màu: <span id="vm-product-name" style="color:#4f46e5"></span></h3>
-            <small style="color:#64748b">Chỉnh sửa Size, Màu sắc và Giá bán từng phân loại. Thao tác này <b>không làm thay đổi hay cộng dồn tồn kho</b>.</small>
+            <h3 style="margin:0;font-size:16px">
+                Quản lý phân loại: <span id="vm-product-name" style="color:#4f46e5"></span>
+                <span id="vm-size-mode-badge" class="size-mode-badge"></span>
+            </h3>
+            <small id="vm-subtitle" style="color:#64748b">Chỉnh sửa Size, Màu sắc và Trạng thái từng phân loại. Muốn đổi giá bán, vui lòng dùng nút <b>Sửa</b> ở sản phẩm.</small>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
-            <a id="vm-goto-inventory" href="/Management/Inventory" class="act-btn act-variant">📦 Nhập / Điều chỉnh tồn kho</a>
+            <a id="vm-goto-inventory" href="/Management/Inventory" class="act-btn act-variant">📦 Kho hàng</a>
             <button type="button" class="act-btn" onclick="closeAllProdPanels()">✕ Đóng</button>
         </div>
     </div>
@@ -308,9 +373,8 @@
             <thead>
                 <tr>
                     <th>Mã SKU</th>
-                    <th>Kích thước (Size)</th>
+                    <th id="vm-col-size-header">Kích thước (Size)</th>
                     <th>Màu sắc</th>
-                    <th>Giá bán (VNĐ)</th>
                     <th>Tồn kho thực tế</th>
                     <th>Trạng thái</th>
                     <th>Thao tác</th>
@@ -321,29 +385,30 @@
     </div>
 
     <div class="add-variant-strip">
-        <div style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px">＋ Thêm cặp Size & Màu mới (Khởi tạo tồn kho = 0)</div>
+        <div id="vm-add-title" style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:10px">＋ Thêm phân loại mới</div>
         <form method="post" asp-action="AddVariant" asp-controller="Management" class="form-grid-admin">
             @Html.AntiForgeryToken()
             <input type="hidden" name="sanPhamId" id="vm-add-prod-id" />
-            <label>Chọn Size
-                <select name="kichThuocId" id="vm-add-size">
-                    @foreach (var s in sizes)
-                    {
-                        <option value="@s.Id">@s.MaSize</option>
-                    }
-                </select>
+            <input type="hidden" name="giaBan" id="vm-add-price" />
+            <label><span id="vm-add-size-label">Chọn Size</span>
+                <select name="kichThuocId" id="vm-add-size" required></select>
             </label>
-            <label>Chọn Màu sắc
-                <select name="mauSacId" id="vm-add-color">
-                    @foreach (var m in colors)
-                    {
-                        <option value="@m.Id">@m.TenMau</option>
-                    }
-                </select>
+            <label id="vm-add-custom-acc-wrap" hidden>Hoặc nhập đại lượng mới
+                <input type="text" name="tenKichThuocMoi" id="vm-add-custom-acc-input" placeholder="VD: Free Size, Dây 115cm..." />
             </label>
-            <label>Giá bán phân loại (VNĐ)
-                <input type="number" name="giaBan" id="vm-add-price" min="1000" step="1000" required />
-            </label>
+            <div class="color-picker-wrap">
+                <label style="display:block">Màu sắc (chọn hoặc nhập mới)
+                    <input type="text"
+                           name="tenMauMoi"
+                           id="vm-add-color-input"
+                           placeholder="Chọn hoặc nhập màu sắc"
+                           autocomplete="off"
+                           onfocus="showColorPopover('vm-add-color-popover', 'vm-add-color-input')"
+                           oninput="renderColorPopover('vm-add-color-popover', 'vm-add-color-input')"
+                           required />
+                </label>
+                <div id="vm-add-color-popover" class="color-suggest-popover" hidden></div>
+            </div>
             <div style="display:flex;align-items:flex-end">
                 <button type="submit" class="primary-button">Thêm phân loại</button>
             </div>
@@ -351,16 +416,16 @@
     </div>
 </section>
 
-<!-- 4. DẢI PHÂN TÍCH XU HƯỚNG BÁN HÀNG → GỢI Ý LỢI NHUẬN & TẠO MÃ GIẢM GIÁ -->
+<!-- 4. DẢI PHÂN TÍCH XU HƯỚNG BÁN HÀNG -->
 @if (adviceList.Count > 0)
 {
     <section class="trend-advisor-banner">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">
             <div>
-                <h4 style="margin:0;font-size:15px;color:#0f172a">📈 Gợi ý tối ưu lợi nhuận & Kích cầu hàng bán chậm (Phân tích 30 ngày)</h4>
-                <small style="color:#64748b">Hệ thống tự động đề xuất tăng biên lãi cho hàng bán chạy và tạo mã khuyến mãi an toàn (không dưới giá gốc) cho hàng tồn lâu.</small>
+                <h4 style="margin:0;font-size:15px;color:#0f172a">📈 Gợi ý điều chỉnh lợi nhuận & khuyến mãi theo dữ liệu bán hàng</h4>
+                <small style="color:#64748b">Tính toán trực tiếp từ dữ liệu đơn hàng và tồn kho trong cơ sở dữ liệu.</small>
             </div>
-            <span style="font-size:12px;font-weight:600;color:#4f46e5">@adviceList.Count đề xuất hành động</span>
+            <span style="font-size:12px;font-weight:600;color:#4f46e5">@adviceList.Count đề xuất</span>
         </div>
 
         <div class="trend-cards-grid">
@@ -391,7 +456,7 @@
                             <a asp-action="Promotions" asp-controller="Management"
                                asp-route-prefillCode="@adv.SuggestedPromoCode"
                                asp-route-prefillDiscount="@adv.SuggestedDiscountPercent"
-                               asp-route-prefillName="Kích cầu @adv.ProductName (-@adv.SuggestedDiscountPercent%)"
+                               asp-route-prefillName="Khuyến mãi @adv.ProductName (-@adv.SuggestedDiscountPercent%)"
                                class="act-btn act-promo">
                                 ⚡ Tạo mã giảm @adv.SuggestedDiscountPercent%
                             </a>
@@ -424,7 +489,7 @@
     </select>
 </form>
 
-<!-- 6. BẢNG DANH SÁCH SẢN PHẨM HIỂN THỊ GIÁ GỐC + % LỢI NHUẬN + GIÁ BÁN -->
+<!-- 6. BẢNG DANH SÁCH SẢN PHẨM -->
 <section class="panel table-panel">
     <div class="table-wrap">
         <table>
@@ -434,7 +499,7 @@
                     <th>Danh mục</th>
                     <th>Giá gốc / Lợi nhuận</th>
                     <th>Giá bán</th>
-                    <th>Tồn kho theo Size & Màu</th>
+                    <th>Tồn kho theo phân loại</th>
                     <th>Trạng thái</th>
                     <th>Thao tác</th>
                 </tr>
@@ -456,7 +521,10 @@
                     <tr>
                         <td>
                             <div class="prod-cell">
-                                <img src="@item.Image" alt="@item.Name">
+                                @if (!string.IsNullOrWhiteSpace(item.Image))
+                                {
+                                    <img src="@item.Image" alt="@item.Name">
+                                }
                                 <div>
                                     <strong>@item.Name</strong>
                                     <div style="font-size:12px;color:#64748b">
@@ -487,7 +555,7 @@
                                             : (v.Available <= 0 ? "v-chip-out" : (v.Available <= 5 ? "v-chip-low" : "v-chip-ok"));
                                         <span class="v-chip @chipCls"
                                               title="SKU: @v.Sku | Tồn: @v.Stock | Giữ: @v.Reserved | Giá: @v.Price.ToString("N0")đ"
-                                              onclick="openVariantManager(@item.Id, '@Html.Raw(item.Name.Replace("'", "\\'"))')">
+                                              onclick="openVariantManager(@item.Id, @JsonSerializer.Serialize(item.Name))">
                                             @v.Size - @v.Color: <b>@v.Available</b>
                                         </span>
                                     }
@@ -497,13 +565,13 @@
                         <td><span class="status-badge @badgeClass">@item.Status</span></td>
                         <td>
                             <div class="prod-actions">
-                                <a asp-action="Details" asp-controller="Shop" asp-route-id="@item.Id" target="_blank" class="act-btn">Xem</a>
+                                <a asp-action="Detail" asp-controller="Shop" asp-route-id="@item.Id" target="_blank" class="act-btn">Xem</a>
                                 <button type="button" class="act-btn act-variant"
-                                        onclick="openVariantManager(@item.Id, '@Html.Raw(item.Name.Replace("'", "\\'"))')">
-                                    Size / Màu (@pVariants.Count)
+                                        onclick="openVariantManager(@item.Id, @JsonSerializer.Serialize(item.Name))">
+                                    Phân loại (@pVariants.Count)
                                 </button>
                                 <button type="button" class="act-btn"
-                                        onclick="openEditProduct(@item.Id, '@Html.Raw(item.Name.Replace("'", "\\'"))')">
+                                        onclick="openEditProduct(@item.Id, @JsonSerializer.Serialize(item.Name))">
                                     Sửa
                                 </button>
                                 <form method="post" asp-action="DeleteProduct" asp-controller="Management" style="display:inline"
@@ -525,7 +593,8 @@
 <script>
     const PRODUCT_VARIANTS = @Html.Raw(variantsJson);
     const PRODUCT_META = @Html.Raw(metaJson);
-    const ALL_SIZES = @Html.Raw(JsonSerializer.Serialize(sizes.Select(s => new { s.Id, s.MaSize })));
+    const CATEGORY_SIZE_MAP = @Html.Raw(catSizeMapJson);
+    const ALL_SIZES = @Html.Raw(sizesJson);
     const ALL_COLORS = @Html.Raw(JsonSerializer.Serialize(colors.Select(c => new { c.Id, c.TenMau })));
     const ANTI_FORGERY = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
 
@@ -533,8 +602,101 @@
         return Math.round(val).toLocaleString('vi-VN') + ' đ';
     }
 
-    // Điền cột Giá gốc & Lợi nhuận trên từng dòng bảng
+    function escapeHtml(str) {
+        return String(str ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
+    function getSizeTypeLabel(sizeType) {
+        if (sizeType === 'SHOE_ASIAN') return 'Size số châu Á (Giày dép)';
+        if (sizeType === 'ACCESSORY') return 'Đại lượng / Không size (Phụ kiện)';
+        return 'Size chữ (Quần áo)';
+    }
+
+    function getFilteredSizes(sizeType, extraIncludeId = null) {
+        const targetGroup = sizeType || 'LETTER';
+        return ALL_SIZES.filter(s => s.Group === targetGroup || (extraIncludeId && s.Id === extraIncludeId));
+    }
+
+    function onCreateCategoryChange() {
+        const catId = document.getElementById('create-cat-select')?.value || '';
+        const sizeType = CATEGORY_SIZE_MAP[catId] || 'LETTER';
+        const filtered = getFilteredSizes(sizeType);
+
+        const sel = document.getElementById('create-size-select');
+        const lbl = document.getElementById('create-size-label');
+        const badge = document.getElementById('create-size-badge');
+        const customWrap = document.getElementById('create-custom-acc-wrap');
+        const customInput = document.getElementById('create-custom-acc-input');
+
+        if (badge) badge.textContent = getSizeTypeLabel(sizeType);
+
+        if (sizeType === 'ACCESSORY') {
+            if (lbl) lbl.textContent = 'Đại lượng / Quy cách';
+            if (customWrap) customWrap.hidden = false;
+            if (sel) {
+                sel.required = false;
+                sel.innerHTML = filtered.map(s => `<option value="${s.Id}">${escapeHtml(s.MaSize)}</option>`).join('');
+            }
+        } else {
+            if (lbl) lbl.textContent = sizeType === 'SHOE_ASIAN' ? 'Size giày (Châu Á)' : 'Size mặc định';
+            if (customWrap) customWrap.hidden = true;
+            if (customInput) customInput.value = '';
+            if (sel) {
+                sel.required = true;
+                const placeholder = sizeType === 'SHOE_ASIAN' ? '-- Chọn size giày --' : '-- Chọn size --';
+                sel.innerHTML = `<option value="">${placeholder}</option>` +
+                    filtered.map(s => `<option value="${s.Id}">${escapeHtml(s.MaSize)}</option>`).join('');
+            }
+        }
+    }
+
+    function hideAllColorPopovers() {
+        document.querySelectorAll('.color-suggest-popover').forEach(el => el.setAttribute('hidden', ''));
+    }
+
+    function renderColorPopover(popoverId, inputId) {
+        const pop = document.getElementById(popoverId);
+        const inp = document.getElementById(inputId);
+        if (!pop || !inp) return;
+
+        const q = (inp.value || '').trim().toLowerCase();
+        const matches = ALL_COLORS.filter(c => !q || c.TenMau.toLowerCase().includes(q));
+
+        if (matches.length === 0) {
+            pop.setAttribute('hidden', '');
+            return;
+        }
+
+        pop.innerHTML = matches.map(c =>
+            `<button type="button" class="color-suggest-item" onmousedown="pickColorValue('${inputId}', '${popoverId}', '${escapeHtml(c.TenMau)}')">${escapeHtml(c.TenMau)}</button>`
+        ).join('');
+        pop.removeAttribute('hidden');
+    }
+
+    function showColorPopover(popoverId, inputId) {
+        hideAllColorPopovers();
+        renderColorPopover(popoverId, inputId);
+    }
+
+    function pickColorValue(inputId, popoverId, val) {
+        const inp = document.getElementById(inputId);
+        if (inp) inp.value = val;
+        document.getElementById(popoverId)?.setAttribute('hidden', '');
+    }
+
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.color-picker-wrap')) {
+            hideAllColorPopovers();
+        }
+    });
+
     window.addEventListener('DOMContentLoaded', () => {
+        onCreateCategoryChange();
         Object.keys(PRODUCT_META).forEach(id => {
             const el = document.getElementById('row-cost-info-' + id);
             const m = PRODUCT_META[id];
@@ -544,7 +706,6 @@
         });
     });
 
-    // Tính toán tự động 2 chiều ở Form Thêm sản phẩm
     function recalcCreatePricing(source) {
         const cost = parseFloat(document.getElementById('create-cost').value) || 0;
         const marginEl = document.getElementById('create-margin');
@@ -576,7 +737,6 @@
         recalcCreatePricing('margin');
     }
 
-    // Tính toán tự động 2 chiều ở Form Chỉnh sửa sản phẩm
     function recalcEditPricing(source) {
         const cost = parseFloat(document.getElementById('edit-prod-cost').value) || 0;
         const marginEl = document.getElementById('edit-prod-margin');
@@ -598,6 +758,7 @@
     }
 
     function closeAllProdPanels() {
+        hideAllColorPopovers();
         ['create-product-box', 'edit-product-box', 'variant-manager-box'].forEach(id => {
             document.getElementById(id)?.setAttribute('hidden', '');
         });
@@ -619,11 +780,11 @@
         document.getElementById('edit-prod-id').value = id;
         document.getElementById('edit-prod-name').value = name;
         if (meta.DanhMucId) document.getElementById('edit-prod-cat').value = meta.DanhMucId;
-        document.getElementById('edit-prod-cost').value = meta.GiaGoc || meta.GiaBan || 0;
-        document.getElementById('edit-prod-margin').value = meta.TyLeLoiNhuan || 0;
-        document.getElementById('edit-prod-price').value = meta.GiaBan || 0;
-        document.getElementById('edit-prod-img').value = meta.Image || '';
-        document.getElementById('edit-prod-desc').value = meta.MoTa || '';
+        document.getElementById('edit-prod-cost').value = meta.GiaGoc ?? '';
+        document.getElementById('edit-prod-margin').value = meta.TyLeLoiNhuan ?? '';
+        document.getElementById('edit-prod-price').value = meta.GiaBan ?? '';
+        document.getElementById('edit-prod-img').value = meta.Image ?? '';
+        document.getElementById('edit-prod-desc').value = meta.MoTa ?? '';
         recalcEditPricing('price');
 
         const box = document.getElementById('edit-product-box');
@@ -634,47 +795,77 @@
     function openVariantManager(productId, productName) {
         closeAllProdPanels();
         const meta = PRODUCT_META[productId] || {};
+        const sizeType = meta.SizeType || 'LETTER';
         const list = PRODUCT_VARIANTS[productId] || [];
 
         document.getElementById('vm-product-name').textContent = productName;
+        document.getElementById('vm-size-mode-badge').textContent = getSizeTypeLabel(sizeType);
         document.getElementById('vm-add-prod-id').value = productId;
-        document.getElementById('vm-add-price').value = meta.GiaBan || 250000;
+        document.getElementById('vm-add-price').value = meta.GiaBan ?? '';
         document.getElementById('vm-goto-inventory').href = '/Management/Inventory?search=' + encodeURIComponent(meta.MaSanPham || productName);
+        document.getElementById('vm-add-color-input').value = '';
 
-        const usedPairs = new Set(list.map(v => `${v.KichThuocId}_${v.MauSacId}`));
-        let foundUnused = false;
-        for (const s of ALL_SIZES) {
-            for (const c of ALL_COLORS) {
-                if (!usedPairs.has(`${s.Id}_${c.Id}`)) {
-                    document.getElementById('vm-add-size').value = s.Id;
-                    document.getElementById('vm-add-color').value = c.Id;
-                    foundUnused = true;
-                    break;
-                }
-            }
-            if (foundUnused) break;
-        }
+        const isAccessory = sizeType === 'ACCESSORY';
+        document.getElementById('vm-col-size-header').textContent = isAccessory
+            ? 'Quy cách / Đại lượng'
+            : (sizeType === 'SHOE_ASIAN' ? 'Size giày (Châu Á)' : 'Kích thước (Size)');
+
+        document.getElementById('vm-add-title').textContent = isAccessory
+            ? '＋ Thêm Quy cách / Đại lượng & Màu mới'
+            : '＋ Thêm cặp Size & Màu mới';
+
+        document.getElementById('vm-add-size-label').textContent = isAccessory
+            ? 'Chọn đại lượng có sẵn'
+            : (sizeType === 'SHOE_ASIAN' ? 'Chọn size giày (35–44)' : 'Chọn Size chữ');
+
+        const addCustomWrap = document.getElementById('vm-add-custom-acc-wrap');
+        const addCustomInput = document.getElementById('vm-add-custom-acc-input');
+        addCustomWrap.hidden = !isAccessory;
+        if (addCustomInput) addCustomInput.value = '';
+
+        const addSizeSelect = document.getElementById('vm-add-size');
+        const filteredAddSizes = getFilteredSizes(sizeType);
+        addSizeSelect.innerHTML = filteredAddSizes
+            .map(s => `<option value="${s.Id}">${escapeHtml(s.MaSize)}</option>`)
+            .join('');
 
         const tbody = document.getElementById('vm-tbody');
         tbody.innerHTML = '';
 
         list.forEach(v => {
-            const sizeOpts = ALL_SIZES.map(s => `<option value="${s.Id}" ${s.Id === v.KichThuocId ? 'selected' : ''}>${s.MaSize}</option>`).join('');
-            const colorOpts = ALL_COLORS.map(c => `<option value="${c.Id}" ${c.Id === v.MauSacId ? 'selected' : ''}>${c.TenMau}</option>`).join('');
+            const rowSizes = getFilteredSizes(sizeType, v.KichThuocId);
+            const sizeOpts = rowSizes.map(s => `<option value="${s.Id}" ${s.Id === v.KichThuocId ? 'selected' : ''}>${escapeHtml(s.MaSize)}</option>`).join('');
+            const popId = `vm-edit-pop-${v.Id}`;
+            const inpId = `vm-edit-inp-${v.Id}`;
 
             const tr = document.createElement('tr');
             tr.innerHTML = `
-                <td><code style="background:#f1f5f9;padding:3px 7px;border-radius:5px;font-size:12px">${v.Sku}</code></td>
+                <td><code style="background:#f1f5f9;padding:3px 7px;border-radius:5px;font-size:12px">${escapeHtml(v.Sku)}</code></td>
                 <td>
                     <form id="form-edit-v-${v.Id}" method="post" action="/Management/EditVariant">
                         <input type="hidden" name="__RequestVerificationToken" value="${ANTI_FORGERY}" />
                         <input type="hidden" name="variantId" value="${v.Id}" />
                         <input type="hidden" name="sanPhamId" value="${productId}" />
+                        <input type="hidden" name="giaBan" value="${v.Price}" />
                     </form>
                     <select form="form-edit-v-${v.Id}" name="kichThuocId">${sizeOpts}</select>
                 </td>
-                <td><select form="form-edit-v-${v.Id}" name="mauSacId">${colorOpts}</select></td>
-                <td><input form="form-edit-v-${v.Id}" type="number" name="giaBan" min="1000" step="1000" value="${v.Price}" style="width:115px" required /></td>
+                <td>
+                    <div class="color-picker-wrap">
+                        <input form="form-edit-v-${v.Id}"
+                               id="${inpId}"
+                               type="text"
+                               name="tenMauMoi"
+                               value="${escapeHtml(v.Color)}"
+                               placeholder="Nhập màu sắc"
+                               autocomplete="off"
+                               onfocus="showColorPopover('${popId}', '${inpId}')"
+                               oninput="renderColorPopover('${popId}', '${inpId}')"
+                               style="width:130px"
+                               required />
+                        <div id="${popId}" class="color-suggest-popover" hidden></div>
+                    </div>
+                </td>
                 <td><strong>${v.Available}</strong> <span style="color:#64748b;font-size:12px">(Tồn: ${v.Stock} | Giữ: ${v.Reserved})</span></td>
                 <td>
                     <select form="form-edit-v-${v.Id}" name="trangThai">
@@ -686,7 +877,7 @@
                     <div style="display:flex;gap:6px">
                         <button type="submit" form="form-edit-v-${v.Id}" class="act-btn act-variant">Lưu sửa</button>
                         <form method="post" action="/Management/DeleteVariant" style="display:inline"
-                              onsubmit="return confirm('Xóa hoặc tạm ẩn phân loại ${v.Sku}?')">
+                              onsubmit="return confirm('Xóa hoặc tạm ẩn phân loại ${escapeHtml(v.Sku)}?')">
                             <input type="hidden" name="__RequestVerificationToken" value="${ANTI_FORGERY}" />
                             <input type="hidden" name="variantId" value="${v.Id}" />
                             <input type="hidden" name="sanPhamId" value="${productId}" />
