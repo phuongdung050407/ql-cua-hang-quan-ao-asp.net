@@ -1,592 +1,980 @@
-﻿using QuestPDF.Fluent;
-using QuestPDF.Helpers;
-using QuestPDF.Infrastructure;
-using Microsoft.Data.SqlClient;
-using ShopProject.Models.DTOs;
-using System.Security.Claims;
-using Microsoft.AspNetCore.Authentication;
+﻿using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 using ShopProject.Models;
-using ShopProject.Models.Entities;
+using System.Data;
+using System.Security.Claims;
+using System.Text.Json;
+using PdfColors = QuestPDF.Helpers.Colors;
+using PdfDocument = QuestPDF.Fluent.Document;
 
 namespace ShopProject.Controllers;
 
 public class ShopController : Controller
 {
-    private readonly ClothingShopDbContext _context;
+    private readonly ClothingShopContext _context;
+    private const string DefaultProductImage = "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600";
 
-    public ShopController(ClothingShopDbContext context)
+    public ShopController(ClothingShopContext context)
     {
         _context = context;
     }
 
-    // --- TẠM GIỮ DỮ LIỆU MẪU SẢN PHẨM CHO ĐẾN BƯỚC 4.2 ---
+    private static string ResolveProductImage(string? dbUrl, string? categoryName)
+    {
+        if (!string.IsNullOrWhiteSpace(dbUrl) && dbUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            return dbUrl;
+
+        return (categoryName ?? "").ToLower() switch
+        {
+            var c when c.Contains("khoác") => "https://images.unsplash.com/photo-1523205771623-e0faa4d2813d?w=600",
+            var c when c.Contains("sơ mi") => "https://images.unsplash.com/photo-1602810318383-e386cc2a3ccf?w=600",
+            var c when c.Contains("quần") => "https://images.unsplash.com/photo-1542272604-787c3835535d?w=600",
+            var c when c.Contains("váy") || c.Contains("đầm") => "https://images.unsplash.com/photo-1595777457583-95e059d581b8?w=600",
+            _ => DefaultProductImage
+        };
+    }
+
+    private IQueryable<SanPham> AvailableRecommendationProducts()
+    {
+        return _context.SanPhams
+            .AsNoTracking()
+            .AsSplitQuery()
+            .Include(product => product.DanhMuc)
+            .Include(product => product.SanPhamAnhs)
+            .Include(product => product.BienTheSanPhams).ThenInclude(variant => variant.TonKhos).ThenInclude(stock => stock.Kho)
+            .Include(product => product.BienTheSanPhams).ThenInclude(variant => variant.KichThuoc)
+            .Include(product => product.BienTheSanPhams).ThenInclude(variant => variant.MauSac)
+            .Where(product => product.TrangThai == "Dang_ban"
+                && product.BienTheSanPhams.Any(variant => variant.TrangThai
+                    && variant.TonKhos.Any(stock => stock.Kho.TrangThai
+                        && stock.SoLuongTon > stock.SoLuongGiuCho)));
+    }
+
+    private async Task<List<ProductViewModel>> GetRecommendedProducts(
+        long? userId,
+        int? excludedProductId,
+        int? fallbackCategoryId,
+        int count)
+    {
+        var products = new List<SanPham>();
+        var suggestedIds = new List<int>();
+
+        if (userId.HasValue)
+        {
+            var suggestions = await _context.SanPhamGoiYResults
+                .FromSqlInterpolated($"EXEC dbo.sp_GoiYSanPham {userId.Value}, {count}")
+                .ToListAsync();
+            suggestedIds = suggestions
+                .Select(suggestion => suggestion.Id)
+                .Where(id => id != excludedProductId)
+                .Distinct()
+                .ToList();
+        }
+
+        if (suggestedIds.Count > 0)
+        {
+            var suggestedProducts = await AvailableRecommendationProducts()
+                .Where(product => suggestedIds.Contains(product.Id))
+                .ToListAsync();
+            products.AddRange(suggestedProducts
+                .OrderBy(product => suggestedIds.IndexOf(product.Id))
+                .Take(count));
+        }
+
+        var selectedIds = products.Select(product => product.Id).ToHashSet();
+        if (excludedProductId.HasValue)
+            selectedIds.Add(excludedProductId.Value);
+
+        if (products.Count < count && fallbackCategoryId.HasValue)
+        {
+            var categoryFallback = await AvailableRecommendationProducts()
+                .Where(product => product.DanhMucId == fallbackCategoryId.Value && !selectedIds.Contains(product.Id))
+                .OrderByDescending(product => product.ThoiGianTao)
+                .Take(count - products.Count)
+                .ToListAsync();
+            products.AddRange(categoryFallback);
+            selectedIds.UnionWith(categoryFallback.Select(product => product.Id));
+        }
+
+        if (products.Count < count)
+        {
+            var generalFallback = await AvailableRecommendationProducts()
+                .Where(product => !selectedIds.Contains(product.Id))
+                .OrderByDescending(product => product.ThoiGianTao)
+                .Take(count - products.Count)
+                .ToListAsync();
+            products.AddRange(generalFallback);
+        }
+
+        return products.Select(product =>
+        {
+            var variants = product.BienTheSanPhams.Where(variant => variant.TrangThai).OrderBy(variant => variant.Id).ToList();
+            var selectedVariant = variants.FirstOrDefault(variant => variant.TonKhos
+                .Any(stock => stock.Kho.TrangThai && stock.SoLuongTon > stock.SoLuongGiuCho));
+            var availableStock = selectedVariant?.TonKhos
+                .Where(stock => stock.Kho.TrangThai)
+                .Sum(stock => Math.Max(0, stock.SoLuongTon - stock.SoLuongGiuCho)) ?? 0;
+            var category = product.DanhMuc?.TenDanhMuc ?? "Khác";
+
+            return new ProductViewModel
+            {
+                Id = product.Id,
+                VariantId = selectedVariant?.Id,
+                Name = product.TenSanPham,
+                Category = category,
+                VariantLabel = selectedVariant == null ? "" : $"{selectedVariant.KichThuoc.MaSize} / {selectedVariant.MauSac.TenMau}",
+                Price = selectedVariant?.GiaBan ?? product.GiaBan,
+                Stock = Math.Max(0, availableStock),
+                Status = availableStock > 0 ? "Còn hàng" : "Tạm hết hàng",
+                Image = ResolveProductImage(product.SanPhamAnhs.FirstOrDefault()?.Url, category)
+            };
+        }).ToList();
+    }
+
+    // 1. TRANG CỬA HÀNG: Lấy sản phẩm & danh mục thật từ SQL Server
     public async Task<IActionResult> Index(string? search, string? category)
     {
-        // 1. Lấy danh sách danh mục đang hoạt động kèm số lượng sản phẩm
-        var categories = await _context.DanhMucs
-            .Where(dm => dm.TrangThai)
-            .Select(dm => new CategoryViewModel
-            {
-                Id = dm.Id,
-                Name = dm.TenDanhMuc,
-                ProductCount = dm.SanPhams.Count(sp => sp.TrangThai == "Dang_ban"),
-                Status = "Hoạt động"
-            })
-            .ToListAsync();
-
-        // 2. Truy vấn sản phẩm đang bán từ SQL Server
         var query = _context.SanPhams
-            .Include(sp => sp.DanhMuc)
-            .Include(sp => sp.SanPhamAnhs)
-            .Include(sp => sp.BienTheSanPhams)
-                .ThenInclude(bt => bt.TonKhos)
-            .Where(sp => sp.TrangThai == "Dang_ban");
+            .Include(p => p.DanhMuc)
+            .Include(p => p.SanPhamAnhs)
+            .Include(p => p.BienTheSanPhams).ThenInclude(v => v.TonKhos).ThenInclude(stock => stock.Kho)
+            .Include(p => p.BienTheSanPhams).ThenInclude(v => v.KichThuoc)
+            .Include(p => p.BienTheSanPhams).ThenInclude(v => v.MauSac)
+            .Where(p => p.TrangThai == "Dang_ban");
 
         if (!string.IsNullOrWhiteSpace(search))
         {
             var kw = search.Trim();
-            query = query.Where(sp => sp.TenSanPham.Contains(kw) || sp.MaSanPham.Contains(kw));
+            query = query.Where(p => p.TenSanPham.Contains(kw) || p.MaSanPham.Contains(kw));
         }
 
         if (!string.IsNullOrWhiteSpace(category))
         {
-            query = query.Where(sp => sp.DanhMuc.TenDanhMuc == category);
+            var cat = category.Trim();
+            query = query.Where(p => p.DanhMuc != null && p.DanhMuc.TenDanhMuc.Contains(cat));
         }
 
-        var sanPhams = await query
-            .OrderByDescending(sp => sp.ThoiGianTao)
-            .ToListAsync();
+        var dbProducts = await query.OrderByDescending(p => p.Id).ToListAsync();
 
-        var productViewModels = sanPhams.Select(MapToProductViewModel).ToList();
-
-        // 3. Lấy danh sách Gợi ý sản phẩm qua Stored Procedure sp_GoiYSanPham
-        var recommended = new List<ProductViewModel>();
-        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        if (long.TryParse(userIdStr, out var userId))
+        var productViewModels = dbProducts.Select(p =>
         {
-            var goiYRaw = await _context.Database
-                .SqlQueryRaw<GoiYSanPhamDto>("EXEC dbo.sp_GoiYSanPham @NguoiDungID = {0}, @SoLuong = {1}", userId, 4)
-                .ToListAsync();
-
-            if (goiYRaw.Count > 0)
+            var variants = p.BienTheSanPhams.Where(v => v.TrangThai).OrderBy(v => v.Id).ToList();
+            var selectedVariant = variants.FirstOrDefault(v => v.TonKhos.Any(stock => stock.Kho.TrangThai && stock.SoLuongTon > stock.SoLuongGiuCho))
+                ?? variants.FirstOrDefault();
+            var stock = selectedVariant?.TonKhos
+                .Where(item => item.Kho.TrangThai)
+                .Sum(item => Math.Max(0, item.SoLuongTon - item.SoLuongGiuCho)) ?? 0;
+            return new ProductViewModel
             {
-                var ids = goiYRaw.Select(g => g.Id).ToList();
-                var anhMap = await _context.SanPhamAnhs
-                    .Where(a => ids.Contains(a.SanPhamId))
-                    .GroupBy(a => a.SanPhamId)
-                    .ToDictionaryAsync(
-                        g => g.Key,
-                        g => g.OrderByDescending(x => x.LaAnhDaiDien).Select(x => x.Url).FirstOrDefault()
-                    );
+                Id = p.Id,
+                VariantId = selectedVariant?.Id,
+                Name = p.TenSanPham,
+                Category = p.DanhMuc?.TenDanhMuc ?? "Khác",
+                VariantLabel = selectedVariant == null ? "" : $"{selectedVariant.KichThuoc.MaSize} / {selectedVariant.MauSac.TenMau}",
+                Price = selectedVariant?.GiaBan ?? p.GiaBan,
+                Stock = Math.Max(0, stock),
+                Status = stock > 0 ? "Còn hàng" : "Tạm hết hàng",
+                Image = ResolveProductImage(p.SanPhamAnhs.FirstOrDefault()?.Url, p.DanhMuc?.TenDanhMuc)
+            };
+        }).ToList();
 
-                recommended = goiYRaw.Select(g => new ProductViewModel
-                {
-                    Id = g.Id,
-                    Name = g.TenSanPham,
-                    Category = g.TenDanhMuc,
-                    Price = g.GiaBan,
-                    Status = "Còn hàng",
-                    Image = anhMap.GetValueOrDefault(g.Id) ?? "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600"
-                }).ToList();
-            }
-        }
+        var categories = await _context.DanhMucs
+            .Where(c => c.TrangThai)
+            .Select(c => new CategoryViewModel
+            {
+                Id = c.Id,
+                Name = c.TenDanhMuc,
+                ProductCount = c.SanPhams.Count(sp => sp.TrangThai == "Dang_ban")
+            }).ToListAsync();
 
-        // Nếu khách chưa đăng nhập hoặc chưa đủ 4 sản phẩm gợi ý thì lấy sản phẩm mới nhất
-        if (recommended.Count == 0)
-        {
-            recommended = productViewModels.Take(4).ToList();
-        }
+        long? currentUserId = null;
+        if (long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            currentUserId = userId;
 
         return View(new StoreViewModel
         {
             Products = productViewModels,
             Categories = categories,
-            RecommendedProducts = recommended
+            Recommendations = await GetRecommendedProducts(currentUserId, null, null, 4)
         });
     }
 
+    public async Task<IActionResult> Recommendations()
+    {
+        long? currentUserId = null;
+        if (long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            currentUserId = userId;
+
+        var recommendations = await GetRecommendedProducts(currentUserId, null, null, 8);
+        return View(recommendations);
+    }
+
+    // 2. CHI TIẾT SẢN PHẨM: Ghi lịch sử xem + Gọi thủ tục gợi ý sp_GoiYSanPham + Lấy đánh giá thật
     public async Task<IActionResult> Detail(int id)
     {
-        
-        // Trong truy vấn tìm sản phẩm:
-        // .FirstOrDefaultAsync(sp => sp.Id == id && (isStaff || sp.TrangThai == "Dang_ban"));
-        bool isStaff = User.IsInRole("Admin") || User.IsInRole("Employee");
+        var dbProduct = await _context.SanPhams
+            .Include(p => p.DanhMuc)
+            .Include(p => p.SanPhamAnhs)
+            .Include(p => p.BienTheSanPhams).ThenInclude(v => v.TonKhos).ThenInclude(stock => stock.Kho)
+            .Include(p => p.BienTheSanPhams).ThenInclude(v => v.KichThuoc)
+            .Include(p => p.BienTheSanPhams).ThenInclude(v => v.MauSac)
+            .FirstOrDefaultAsync(p => p.Id == id && p.TrangThai == "Dang_ban");
 
-        var sp = await _context.SanPhams
-            .Include(s => s.DanhMuc)
-            .Include(s => s.SanPhamAnhs)
-            .Include(s => s.BienTheSanPhams)
-                .ThenInclude(bt => bt.KichThuoc)
-            .Include(s => s.BienTheSanPhams)
-                .ThenInclude(bt => bt.MauSac)
-            .Include(s => s.BienTheSanPhams)
-                .ThenInclude(bt => bt.TonKhos)
-            .FirstOrDefaultAsync(s => s.Id == id && (isStaff || s.TrangThai == "Dang_ban"));
+        if (dbProduct == null) return NotFound();
 
-        if (sp == null)
+        long? currentUserId = null;
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (long.TryParse(userIdClaim, out var parsedId))
         {
-            return RedirectToAction(nameof(Index));
+            currentUserId = parsedId;
         }
-        // Lưu lịch sử xem sản phẩm nếu khách hàng đã đăng nhập (phục vụ sp_GoiYSanPham)
-        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (long.TryParse(userIdStr, out var userId))
+
+        if (currentUserId.HasValue)
         {
             _context.LichSuXemSanPhams.Add(new LichSuXemSanPham
             {
-                NguoiDungId = userId,
-                SanPhamId = sp.Id,
+                SanPhamId = dbProduct.Id,
+                NguoiDungId = currentUserId.Value,
                 ThoiGianXem = DateTime.Now
             });
             await _context.SaveChangesAsync();
         }
 
-        var vm = MapToProductViewModel(sp);
+        ViewBag.Related = await GetRecommendedProducts(currentUserId, dbProduct.Id, dbProduct.DanhMucId, 4);
 
-        // Truyền thêm thông tin chi tiết sang View
-        ViewBag.Description = sp.MoTa;
-        ViewBag.Brand = sp.ThuongHieu?.TenThuongHieu;
-        ViewBag.Material = sp.ChatLieu?.TenChatLieu;
-        ViewBag.Images = sp.SanPhamAnhs
-            .OrderByDescending(a => a.LaAnhDaiDien)
-            .Select(a => a.Url)
-            .DefaultIfEmpty(vm.Image)
-            .ToList();
-
-        ViewBag.Variants = sp.BienTheSanPhams
-            .OrderBy(bt => bt.KichThuoc.ThuTu)
-            .Select(bt => new
-            {
-                bt.Id,
-                bt.Sku,
-                Size = bt.KichThuoc.MaSize,
-                Color = bt.MauSac.TenMau,
-                ColorHex = bt.MauSac.MaHex ?? "#cccccc",
-                Price = bt.GiaBan,
-                Available = bt.TonKhos.Sum(tk => tk.SoLuongTon - tk.SoLuongGiuCho)
-            })
-            .ToList();
-
-        ViewBag.Reviews = sp.DanhGia
-            .OrderByDescending(dg => dg.ThoiGianTao)
-            .ToList();
-
-        var relatedEntities = await _context.SanPhams
-            .Include(s => s.DanhMuc)
-            .Include(s => s.SanPhamAnhs)
-            .Include(s => s.BienTheSanPhams)
-                .ThenInclude(bt => bt.TonKhos)
-            .Where(s => s.TrangThai == "Dang_ban" && s.DanhMucId == sp.DanhMucId && s.Id != sp.Id)
-            .Take(4)
+        ViewBag.Reviews = await _context.DanhGia
+            .Include(r => r.NguoiDung)
+            .Where(r => r.SanPhamId == dbProduct.Id && r.TrangThai == "Da_duyet")
+            .OrderByDescending(r => r.ThoiGianTao)
             .ToListAsync();
 
-        ViewBag.Related = relatedEntities.Select(MapToProductViewModel).ToList();
+        var availableVariants = dbProduct.BienTheSanPhams.Where(v => v.TrangThai).OrderBy(v => v.Id).ToList();
+        var selectedVariant = availableVariants.FirstOrDefault(v => v.TonKhos.Any(stock => stock.Kho.TrangThai && stock.SoLuongTon > stock.SoLuongGiuCho))
+            ?? availableVariants.FirstOrDefault();
+        var productStock = selectedVariant?.TonKhos
+            .Where(stock => stock.Kho.TrangThai)
+            .Sum(stock => Math.Max(0, stock.SoLuongTon - stock.SoLuongGiuCho)) ?? 0;
+        var productVm = new ProductViewModel
+        {
+            Id = dbProduct.Id,
+            VariantId = selectedVariant?.Id,
+            Name = dbProduct.TenSanPham,
+            Category = dbProduct.DanhMuc?.TenDanhMuc ?? "Khác",
+            VariantLabel = selectedVariant == null ? "" : $"{selectedVariant.KichThuoc.MaSize} / {selectedVariant.MauSac.TenMau}",
+            Price = selectedVariant?.GiaBan ?? dbProduct.GiaBan,
+            Stock = Math.Max(0, productStock),
+            Status = productStock > 0 ? "Còn hàng" : "Tạm hết hàng",
+            Image = ResolveProductImage(dbProduct.SanPhamAnhs.FirstOrDefault()?.Url, dbProduct.DanhMuc?.TenDanhMuc)
+        };
 
-        return View(vm);
+        return View(productVm);
     }
 
-    private static ProductViewModel MapToProductViewModel(SanPham sp)
+    // 2B. NHẬN ĐÁNH GIÁ MỚI TỪ KHÁCH HÀNG
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> AddReview(int sanPhamId, int soSao, string noiDung)
     {
-        var activeVariants = sp.BienTheSanPhams.Where(bt => bt.TrangThai).ToList();
-        var minPrice = activeVariants.Count > 0 ? activeVariants.Min(bt => bt.GiaBan) : sp.GiaBan;
-        var totalAvailable = activeVariants.Sum(bt => bt.TonKhos.Sum(tk => tk.SoLuongTon - tk.SoLuongGiuCho));
-        var avatar = sp.SanPhamAnhs
-            .OrderByDescending(a => a.LaAnhDaiDien)
-            .Select(a => a.Url)
-            .FirstOrDefault() ?? "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600";
-
-        return new ProductViewModel
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!long.TryParse(userIdClaim, out var userId))
         {
-            Id = sp.Id,
-            Name = sp.TenSanPham,
-            Category = sp.DanhMuc?.TenDanhMuc ?? "Khác",
-            Price = minPrice,
-            Stock = totalAvailable,
-            Status = totalAvailable > 0 ? "Còn hàng" : "Hết hàng",
-            Image = avatar
+            TempData["ReviewError"] = "Vui lòng đăng nhập để gửi đánh giá sản phẩm.";
+            return RedirectToAction(nameof(Login));
+        }
+
+        var donHangHopLe = await _context.DonHangs
+            .Include(d => d.DonHangChiTiets)
+                .ThenInclude(ct => ct.BienThe)
+            .Where(d => d.NguoiDungId == userId
+                     && d.TrangThai == "Da_giao"
+                     && d.DonHangChiTiets.Any(ct => ct.BienThe.SanPhamId == sanPhamId))
+            .OrderByDescending(d => d.Id)
+            .FirstOrDefaultAsync();
+
+        if (donHangHopLe == null)
+        {
+            TempData["ReviewError"] = "Bạn chỉ có thể đánh giá sau khi đơn hàng chứa sản phẩm này đã được giao thành công!";
+            return RedirectToAction(nameof(Detail), new { id = sanPhamId });
+        }
+
+        var daDanhGia = await _context.DanhGia
+            .AnyAsync(r => r.NguoiDungId == userId
+                        && r.SanPhamId == sanPhamId
+                        && r.DonHangId == donHangHopLe.Id);
+
+        if (daDanhGia)
+        {
+            TempData["ReviewError"] = "Bạn đã gửi đánh giá cho sản phẩm này ở đơn hàng gần nhất rồi.";
+            return RedirectToAction(nameof(Detail), new { id = sanPhamId });
+        }
+
+        var danhGia = new DanhGium
+        {
+            SanPhamId = sanPhamId,
+            NguoiDungId = userId,
+            DonHangId = donHangHopLe.Id,
+            SoSao = (byte)Math.Clamp(soSao, 1, 5),
+            NoiDung = string.IsNullOrWhiteSpace(noiDung) ? "Sản phẩm rất tốt!" : noiDung.Trim(),
+            TrangThai = "Cho_duyet",
+            ThoiGianTao = DateTime.Now
+        };
+
+        _context.DanhGia.Add(danhGia);
+        await _context.SaveChangesAsync();
+
+        TempData["ReviewSuccess"] = "Cảm ơn bạn đã đánh giá! Nhận xét của bạn đang chờ quản trị viên duyệt hiển thị.";
+        return RedirectToAction(nameof(Detail), new { id = sanPhamId });
+    }
+
+    // 3. ĐĂNG KÝ TÀI KHOẢN THẬT VÀO BẢNG NGUOI_DUNG
+    [HttpGet]
+    public IActionResult Register() => View(new RegisterViewModel());
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Register(RegisterViewModel model)
+    {
+        if (!ModelState.IsValid) return View(model);
+
+        var email = model.Email.Trim();
+        var emailLower = email.ToLowerInvariant();
+        var phone = model.Phone.Trim();
+        model.FullName = model.FullName.Trim();
+        model.Email = email;
+        model.Phone = phone;
+        if (string.IsNullOrWhiteSpace(model.FullName))
+        {
+            ModelState.AddModelError(nameof(model.FullName), "Vui lòng nhập họ và tên.");
+            return View(model);
+        }
+
+        var emailExists = await _context.NguoiDungs
+            .AnyAsync(u => u.EmailChuan == emailLower || u.TenDangNhap == email);
+        if (emailExists)
+        {
+            ModelState.AddModelError(nameof(model.Email), "Email hoặc tên đăng nhập đã được sử dụng.");
+            return View(model);
+        }
+
+        var roleKhachHang = await _context.VaiTros
+            .FirstOrDefaultAsync(r => r.MaVaiTro == "KHACH_HANG");
+        if (roleKhachHang == null)
+        {
+            ModelState.AddModelError("", "Không tìm thấy vai trò KHACH_HANG trong hệ thống.");
+            return View(model);
+        }
+
+        var now = DateTime.Now;
+        var hasher = new PasswordHasher<NguoiDung>();
+
+        var newUser = new NguoiDung
+        {
+            TenDangNhap = email,
+            Email = email,
+            HoTen = model.FullName,
+            SoDienThoai = phone,
+            TrangThai = "Hoat_dong",
+            DaXacThucEmail = false,
+            ThoiGianTao = now,
+            ThoiGianCapNhat = now,
+            GioHang = new GioHang { ThoiGianTao = now }
+        };
+        newUser.MatKhauHash = hasher.HashPassword(newUser, model.Password);
+        newUser.VaiTros.Add(roleKhachHang);
+
+        try
+        {
+            _context.NguoiDungs.Add(newUser);
+            await _context.SaveChangesAsync();
+
+            TempData["RegisterSuccess"] = "Đăng ký thành công. Hãy đăng nhập.";
+            return RedirectToAction(nameof(Login));
+        }
+        catch (DbUpdateException)
+        {
+            ModelState.AddModelError("", "Không thể hoàn tất đăng ký. Vui lòng kiểm tra thông tin hoặc thử lại.");
+            return View(model);
+        }
+    }
+
+    // 4. ĐĂNG NHẬP TỪ DATABASE
+    [HttpGet]
+    public IActionResult Login(string? returnUrl = null)
+    {
+        ViewData["ReturnUrl"] = returnUrl;
+        return View(new LoginViewModel());
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Login(LoginViewModel model, string? returnUrl = null)
+    {
+        ViewData["ReturnUrl"] = returnUrl;
+        if (!ModelState.IsValid)
+            return View(model);
+
+        var loginInput = (model.Email ?? string.Empty).Trim();
+        var emailChuan = loginInput.ToLowerInvariant();
+        var password = (model.Password ?? string.Empty).Trim();
+
+        var user = await _context.NguoiDungs
+            .Include(u => u.VaiTros)
+            .FirstOrDefaultAsync(u =>
+                (u.Email != null && u.Email.ToLower() == emailChuan)
+                || (u.EmailChuan != null && u.EmailChuan.ToLower() == emailChuan)
+                || (u.TenDangNhap != null && u.TenDangNhap.ToLower() == emailChuan));
+
+        if (user == null)
+        {
+            ModelState.AddModelError("", "Email/tên đăng nhập hoặc mật khẩu không đúng.");
+            return View(model);
+        }
+
+        var status = (user.TrangThai ?? string.Empty).Trim();
+        if (string.Equals(status, "Khoa", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "Bi_khoa", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "Ngung_hoat_dong", StringComparison.OrdinalIgnoreCase))
+        {
+            ModelState.AddModelError("", "Tài khoản hiện đang bị khóa.");
+            return View(model);
+        }
+
+        var hasher = new PasswordHasher<NguoiDung>();
+        bool isValidPassword = false;
+        var storedHash = (user.MatKhauHash ?? string.Empty).Trim();
+
+        if (!string.IsNullOrEmpty(storedHash))
+        {
+            if (storedHash.StartsWith("AQAAAA"))
+            {
+                var verifyResult = hasher.VerifyHashedPassword(user, storedHash, password);
+                isValidPassword = verifyResult != PasswordVerificationResult.Failed;
+            }
+            else if (storedHash.StartsWith("$2a$") || storedHash.StartsWith("$2b$") || storedHash.StartsWith("$2y$"))
+            {
+                isValidPassword = BCrypt.Net.BCrypt.Verify(password, storedHash);
+            }
+            else
+            {
+                isValidPassword = storedHash == password || storedHash == (model.Password ?? string.Empty);
+            }
+        }
+
+        if (!isValidPassword)
+        {
+            ModelState.AddModelError("", "Email/tên đăng nhập hoặc mật khẩu không đúng.");
+            return View(model);
+        }
+
+        var nhanVien = await _context.NhanViens
+            .AsNoTracking()
+            .FirstOrDefaultAsync(nv => nv.NguoiDungId == user.Id);
+
+        if (nhanVien != null && nhanVien.TrangThai == "Da_nghi")
+        {
+            ModelState.AddModelError("", "Tài khoản nhân viên đã nghỉ việc.");
+            return View(model);
+        }
+
+        var now = DateTime.Now;
+        user.ThoiGianCapNhat = now;
+        if (string.IsNullOrWhiteSpace(user.TrangThai))
+            user.TrangThai = "Hoat_dong";
+
+        _context.NhatKyHeThongs.Add(new NhatKyHeThong
+        {
+            NguoiDungId = user.Id,
+            HanhDong = "DANG_NHAP",
+            DoiTuong = "nguoi_dung",
+            DoiTuongId = user.Id,
+            NoiDung = $"Đăng nhập hệ thống: {user.Email}",
+            ThoiGian = now
+        });
+
+        await _context.SaveChangesAsync();
+
+        var maVaiTro = user.VaiTros.FirstOrDefault()?.MaVaiTro ?? "KHACH_HANG";
+        var appRole = maVaiTro.ToUpperInvariant() switch
+        {
+            "ADMIN" or "QUAN_TRI" => "Admin",
+            "NHAN_VIEN" or "QL_KHO" or "QL_SAN_PHAM" or "EMPLOYEE" => "Employee",
+            _ => "Customer"
+        };
+
+        var claims = new[]
+        {
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(ClaimTypes.Name, user.HoTen ?? user.Email ?? "Người dùng"),
+            new Claim(ClaimTypes.Email, user.Email ?? ""),
+            new Claim("MaVaiTro", maVaiTro),
+            new Claim(ClaimTypes.Role, appRole)
+        };
+
+        var identity = new ClaimsIdentity(claims, "ShopCookie", ClaimTypes.Name, ClaimTypes.Role);
+        await HttpContext.SignInAsync("ShopCookie", new ClaimsPrincipal(identity), new AuthenticationProperties
+        {
+            IsPersistent = model.RememberMe,
+            ExpiresUtc = model.RememberMe ? DateTimeOffset.UtcNow.AddDays(30) : DateTimeOffset.UtcNow.AddHours(8)
+        });
+
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
+            return Redirect(returnUrl);
+
+        return appRole switch
+        {
+            "Admin" => RedirectToAction("Index", "Home"),
+            "Employee" => RedirectToAction("Orders", "Management"),
+            _ => RedirectToAction(nameof(Index))
         };
     }
 
-// =========================================================================
-    // GIỎ HÀNG & ĐẶT HÀNG (GỌI STORED PROCEDURE sp_TaoDonHangTuGioHang)
-    // =========================================================================
+    // Đổi mật khẩu trương hợp quên mk
+    [HttpGet]
+    public IActionResult ForgotPassword()
+    {
+        return View(new ForgotPasswordViewModel());
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordViewModel model)
+    {
+        if (!ModelState.IsValid)
+        {
+            return View(model);
+        }
+
+        var normalizedEmail = model.Email.Trim().ToLower();
+
+        var user = await _context.NguoiDungs
+            .FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == normalizedEmail);
+
+        if (user == null)
+        {
+            ModelState.AddModelError(nameof(model.Email), "Không tìm thấy tài khoản với email này.");
+            return View(model);
+        }
+
+        var hasher = new PasswordHasher<NguoiDung>();
+        user.MatKhauHash = hasher.HashPassword(user, model.NewPassword);
+        user.ThoiGianCapNhat = DateTime.Now;
+
+        await _context.SaveChangesAsync();
+
+        TempData["SuccessMessage"] = "Đặt lại mật khẩu thành công. Vui lòng đăng nhập bằng mật khẩu mới.";
+        return RedirectToAction("Login", "Shop");
+    }
+
+    // 5. ĐĂNG XUẤT
+    [Authorize]
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Logout()
+    {
+        await HttpContext.SignOutAsync("ShopCookie");
+        return RedirectToAction(nameof(Index));
+    }
+
+    public IActionResult AccessDenied() => View();
+
+    // 5. GIỎ HÀNG & THANH TOÁN
+    public IActionResult Cart()
+    {
+        return View(new List<ProductViewModel>());
+    }
+
+    [Authorize]
+    public async Task<IActionResult> MyOrders()
+    {
+        if (!long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            return Challenge();
+
+        var orders = await _context.DonHangs
+            .AsNoTracking()
+            .Where(order => order.NguoiDungId == userId)
+            .Include(order => order.DonHangChiTiets)
+            .OrderByDescending(order => order.ThoiGianTao)
+            .ToListAsync();
+
+        return View(orders);
+    }
+
+    [Authorize]
+    [HttpGet]
+    public async Task<IActionResult> PersistentCart()
+    {
+        if (!long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            return Challenge();
+
+        var cart = await _context.GioHangs
+            .Include(item => item.GioHangChiTiets).ThenInclude(item => item.BienThe).ThenInclude(variant => variant.SanPham).ThenInclude(product => product.DanhMuc)
+            .Include(item => item.GioHangChiTiets).ThenInclude(item => item.BienThe).ThenInclude(variant => variant.SanPham).ThenInclude(product => product.SanPhamAnhs)
+            .Include(item => item.GioHangChiTiets).ThenInclude(item => item.BienThe).ThenInclude(variant => variant.KichThuoc)
+            .Include(item => item.GioHangChiTiets).ThenInclude(item => item.BienThe).ThenInclude(variant => variant.MauSac)
+            .Include(item => item.GioHangChiTiets).ThenInclude(item => item.BienThe).ThenInclude(variant => variant.TonKhos).ThenInclude(stock => stock.Kho)
+            .FirstOrDefaultAsync(item => item.NguoiDungId == userId);
+
+        var lines = cart?.GioHangChiTiets.Select(line =>
+        {
+            var variant = line.BienThe;
+            var product = variant.SanPham;
+            var availableStock = variant.TonKhos
+                .Where(stock => stock.Kho.TrangThai)
+                .Sum(stock => Math.Max(0, stock.SoLuongTon - stock.SoLuongGiuCho));
+            var category = product.DanhMuc?.TenDanhMuc ?? "Khác";
+
+            return (object)new
+            {
+                id = product.Id.ToString(),
+                variantId = variant.Id,
+                name = product.TenSanPham,
+                category,
+                image = ResolveProductImage(product.SanPhamAnhs.FirstOrDefault()?.Url, category),
+                variantLabel = $"{variant.KichThuoc.MaSize} / {variant.MauSac.TenMau}",
+                price = variant.GiaBan,
+                stock = availableStock,
+                quantity = line.SoLuong
+            };
+        }).ToList() ?? new List<object>();
+
+        return Json(lines);
+    }
 
     [Authorize]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> AddToCart(int? productId, long? variantId, int quantity = 1)
+    public async Task<IActionResult> SyncCart(string? cartJson)
     {
         if (!long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-            return RedirectToAction(nameof(Login));
+            return Unauthorized(new { message = "Vui lòng đăng nhập lại." });
 
-        quantity = Math.Max(1, quantity);
-
-        // Tìm biến thể khách đã chọn (hoặc tự lấy biến thể đầu tiên còn hàng nếu bấm '+' ở trang chủ)
-        BienTheSanPham? bienThe = null;
-        if (variantId.HasValue && variantId.Value > 0)
+        List<CartItemPayload> items;
+        try
         {
-            bienThe = await _context.BienTheSanPhams
-                .Include(bt => bt.TonKhos)
-                .FirstOrDefaultAsync(bt => bt.Id == variantId.Value && bt.TrangThai);
-        }
-        else if (productId.HasValue && productId.Value > 0)
-        {
-            bienThe = await _context.BienTheSanPhams
-                .Include(bt => bt.TonKhos)
-                .Where(bt => bt.SanPhamId == productId.Value && bt.TrangThai)
-                .OrderBy(bt => bt.Id)
-                .FirstOrDefaultAsync();
-        }
-
-        if (bienThe == null)
-        {
-            TempData["CartError"] = "Sản phẩm hoặc phân loại không tồn tại.";
-            return RedirectToAction(nameof(Index));
-        }
-
-        var available = bienThe.TonKhos.Sum(tk => tk.SoLuongTon - tk.SoLuongGiuCho);
-        if (available < quantity)
-        {
-            TempData["CartError"] = "Phân loại này hiện không đủ số lượng trong kho.";
-            return RedirectToAction(nameof(Detail), new { id = bienThe.SanPhamId });
-        }
-
-        // Tìm hoặc tạo giỏ hàng cho tài khoản
-        var gioHang = await _context.GioHangs.FirstOrDefaultAsync(g => g.NguoiDungId == userId);
-        if (gioHang == null)
-        {
-            gioHang = new GioHang
+            items = JsonSerializer.Deserialize<List<CartItemPayload>>(cartJson ?? "[]", new JsonSerializerOptions
             {
-                NguoiDungId = userId,
-                ThoiGianTao = DateTime.Now
-            };
-            _context.GioHangs.Add(gioHang);
-            await _context.SaveChangesAsync();
+                PropertyNameCaseInsensitive = true
+            }) ?? new List<CartItemPayload>();
+        }
+        catch (JsonException)
+        {
+            return BadRequest(new { message = "Không thể đọc nội dung giỏ hàng." });
         }
 
-        var chiTiet = await _context.GioHangChiTiets
-            .FirstOrDefaultAsync(ct => ct.GioHangId == gioHang.Id && ct.BienTheId == bienThe.Id);
+        if (items.Count > 100 || items.Any(item => !int.TryParse(item.Id, out var productId)
+                || productId <= 0 || item.Quantity < 1 || item.Quantity > 99
+                || (item.VariantId.HasValue && item.VariantId.Value < 1)))
+            return BadRequest(new { message = "Sản phẩm hoặc số lượng trong giỏ không hợp lệ." });
 
-        if (chiTiet != null)
+        var normalizedItems = items
+            .GroupBy(item => new { item.Id, item.VariantId })
+            .Select(group => new CartItemPayload
+            {
+                Id = group.Key.Id,
+                VariantId = group.Key.VariantId,
+                Quantity = group.Sum(item => item.Quantity)
+            })
+            .ToList();
+        if (normalizedItems.Any(item => item.Quantity > 99))
+            return BadRequest(new { message = "Mỗi phiên bản chỉ được đặt tối đa 99 sản phẩm." });
+
+        var productIds = normalizedItems.Select(item => int.Parse(item.Id)).Distinct().ToList();
+        var products = await _context.SanPhams
+            .Include(product => product.BienTheSanPhams).ThenInclude(variant => variant.TonKhos).ThenInclude(stock => stock.Kho)
+            .Where(product => productIds.Contains(product.Id) && product.TrangThai == "Dang_ban")
+            .ToListAsync();
+
+        var selectedVariants = new List<(BienTheSanPham Variant, int Quantity)>();
+        foreach (var item in normalizedItems)
         {
-            chiTiet.SoLuong = Math.Min(available, chiTiet.SoLuong + quantity);
-            chiTiet.ThoiGianThem = DateTime.Now;
+            var product = products.FirstOrDefault(candidate => candidate.Id == int.Parse(item.Id));
+            var variants = product?.BienTheSanPhams.Where(variant => variant.TrangThai
+                && (!item.VariantId.HasValue || variant.Id == item.VariantId.Value)).ToList();
+            var variant = variants?.FirstOrDefault(candidate => candidate.TonKhos
+                .Where(stock => stock.Kho.TrangThai)
+                .Sum(stock => Math.Max(0, stock.SoLuongTon - stock.SoLuongGiuCho)) >= item.Quantity);
+            if (variant == null)
+                return BadRequest(new { message = "Một phiên bản đã hết hàng hoặc không đủ số lượng." });
+
+            selectedVariants.Add((variant, item.Quantity));
+        }
+
+        await using var transaction = await _context.Database.BeginTransactionAsync();
+        var cart = await _context.GioHangs
+            .Include(item => item.GioHangChiTiets)
+            .FirstOrDefaultAsync(item => item.NguoiDungId == userId);
+        if (cart == null)
+        {
+            cart = new GioHang { NguoiDungId = userId, ThoiGianTao = DateTime.Now };
+            _context.GioHangs.Add(cart);
         }
         else
         {
-            _context.GioHangChiTiets.Add(new GioHangChiTiet
+            _context.GioHangChiTiets.RemoveRange(cart.GioHangChiTiets);
+            cart.GioHangChiTiets.Clear();
+        }
+
+        foreach (var item in selectedVariants)
+        {
+            cart.GioHangChiTiets.Add(new GioHangChiTiet
             {
-                GioHangId = gioHang.Id,
-                BienTheId = bienThe.Id,
-                SoLuong = quantity,
+                BienTheId = item.Variant.Id,
+                SoLuong = item.Quantity,
                 ThoiGianThem = DateTime.Now
             });
         }
 
         await _context.SaveChangesAsync();
-        return RedirectToAction(nameof(Cart));
+        await transaction.CommitAsync();
+        return Json(new { success = true });
     }
 
     [Authorize]
-    public async Task<IActionResult> Cart()
-    {
-        var items = await GetUserCartItemsAsync();
-        return View(items);
-    }
+    public IActionResult Checkout() => View(new List<ProductViewModel>());
 
-    [Authorize]
+    // 6. ĐẶT HÀNG THẬT VÀO SQL SERVER
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> UpdateCart(long cartItemId, int delta)
-    {
-        if (!long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-            return RedirectToAction(nameof(Login));
-
-        var item = await _context.GioHangChiTiets
-            .Include(ct => ct.GioHang)
-            .Include(ct => ct.BienThe)
-                .ThenInclude(bt => bt.TonKhos)
-            .FirstOrDefaultAsync(ct => ct.Id == cartItemId && ct.GioHang.NguoiDungId == userId);
-
-        if (item != null)
-        {
-            var newQty = item.SoLuong + delta;
-            var maxStock = item.BienThe.TonKhos.Sum(tk => tk.SoLuongTon - tk.SoLuongGiuCho);
-
-            if (newQty <= 0)
-            {
-                _context.GioHangChiTiets.Remove(item);
-            }
-            else if (newQty <= maxStock)
-            {
-                item.SoLuong = newQty;
-            }
-            else
-            {
-                TempData["CartError"] = $"Trong kho chỉ còn tối đa {maxStock} sản phẩm cho phân loại này.";
-            }
-
-            await _context.SaveChangesAsync();
-        }
-
-        return RedirectToAction(nameof(Cart));
-    }
-
     [Authorize]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> RemoveCart(long cartItemId)
-    {
-        if (!long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-            return RedirectToAction(nameof(Login));
-
-        var item = await _context.GioHangChiTiets
-            .Include(ct => ct.GioHang)
-            .FirstOrDefaultAsync(ct => ct.Id == cartItemId && ct.GioHang.NguoiDungId == userId);
-
-        if (item != null)
-        {
-            _context.GioHangChiTiets.Remove(item);
-            await _context.SaveChangesAsync();
-        }
-
-        return RedirectToAction(nameof(Cart));
-    }
-
-    [Authorize]
-    public async Task<IActionResult> Checkout()
-    {
-        var items = await GetUserCartItemsAsync();
-        if (items.Count == 0)
-        {
-            TempData["CartError"] = "Giỏ hàng của bạn đang trống.";
-            return RedirectToAction(nameof(Cart));
-        }
-
-        if (long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-        {
-            var user = await _context.NguoiDungs.FirstOrDefaultAsync(u => u.Id == userId);
-            if (user != null)
-            {
-                ViewBag.FullName = user.HoTen;
-                ViewBag.Phone = user.SoDienThoai ?? "";
-                ViewBag.Email = user.Email;
-                ViewBag.Address = "";
-            }
-        }
-
-        // Giữ lại các trường khách đã nhập nếu lần đặt trước bị lỗi (không khôi phục maVoucher)
-        if (TempData["FormFullName"] is string savedName) ViewBag.FullName = savedName;
-        if (TempData["FormPhone"] is string savedPhone) ViewBag.Phone = savedPhone;
-        if (TempData["FormEmail"] is string savedEmail) ViewBag.Email = savedEmail;
-        if (TempData["FormAddress"] is string savedAddress) ViewBag.Address = savedAddress;
-        ViewBag.Provinces = await _context.TinhThanhs
-            .Where(t => t.TrangThai)
-            .OrderBy(t => t.TenTinhThanh)
-            .ToListAsync();
-        ViewBag.District = TempData["FormDistrict"] as string ?? "";
-        ViewBag.PaymentMethod = TempData["FormPayment"] as string ?? "COD";
-
-        return View(items);
-    }
-
-    [Authorize]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
     public async Task<IActionResult> PlaceOrder(
         string fullName,
         string phone,
+        string email,
         string address,
-        string? province,
-        string? district,
-        string payment = "COD",
-        string? maVoucher = null,
-        bool daChuyenKhoan = false)
+        string province,
+        string district,
+        string? note,
+        string payment,
+        string? cartJson,
+        string? couponCode)
     {
-        var tinhHopLe = await _context.TinhThanhs
-            .AnyAsync(t => t.TenTinhThanh == province && t.TrangThai);
-
-        if (!tinhHopLe)
+        if (string.IsNullOrWhiteSpace(fullName)
+            || string.IsNullOrWhiteSpace(phone)
+            || string.IsNullOrWhiteSpace(address)
+            || string.IsNullOrWhiteSpace(province)
+            || string.IsNullOrWhiteSpace(district)
+            || payment is not ("COD" or "Bank"))
         {
-            TempData["FormFullName"] = fullName;
-            TempData["FormPhone"] = phone;
-            TempData["FormEmail"] = Request.Form["email"].ToString();
-            TempData["FormAddress"] = address;
-            TempData["FormDistrict"] = district;
-            TempData["FormPayment"] = payment;
-            TempData["CheckoutError"] = "Cửa hàng hiện chưa hỗ trợ hoặc đã tạm ngưng giao hàng tại khu vực bạn chọn.";
+            TempData["CartError"] = "Vui lòng nhập đầy đủ thông tin giao hàng và phương thức thanh toán hợp lệ.";
             return RedirectToAction(nameof(Checkout));
         }
 
-        if (!long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-            return RedirectToAction(nameof(Login));
-
-        var diaChiDayDu = string.Join(", ",
-            new[] { address, district, province }.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!.Trim()));
-
-        var phuongThucSql = payment switch
-        {
-            "Bank" or "Chuyen_khoan" => "Chuyen_khoan",
-            "Wallet" or "Vi_dien_tu" => "Vi_dien_tu",
-            _ => "COD"
-        };
-
-        var pUserId = new SqlParameter("@NguoiDungID", System.Data.SqlDbType.BigInt) { Value = userId };
-        var pTen = new SqlParameter("@TenNguoiNhan", System.Data.SqlDbType.NVarChar, 150) { Value = (fullName ?? "").Trim() };
-        var pSdt = new SqlParameter("@DienThoai", System.Data.SqlDbType.VarChar, 20) { Value = (phone ?? "").Trim() };
-        var pDiaChi = new SqlParameter("@DiaChiGiao", System.Data.SqlDbType.NVarChar, 300) { Value = diaChiDayDu };
-        var pPhuongThuc = new SqlParameter("@PhuongThuc", System.Data.SqlDbType.VarChar, 30) { Value = phuongThucSql };
-        var pPhiShip = new SqlParameter("@PhiVanChuyen", System.Data.SqlDbType.Decimal)
-        {
-            Precision = 18,
-            Scale = 2,
-            Value = 0m
-        };
-        var pDonHangId = new SqlParameter("@DonHangID", System.Data.SqlDbType.BigInt)
-        {
-            Direction = System.Data.ParameterDirection.Output
-        };
-        var pVoucher = new SqlParameter("@MaVoucher", System.Data.SqlDbType.VarChar, 50)
-        {
-            Value = string.IsNullOrWhiteSpace(maVoucher) ? DBNull.Value : maVoucher.Trim()
-        };
-
+        var cartItems = new List<CartItemPayload>();
         try
         {
-            await _context.Database.ExecuteSqlRawAsync(
-                "EXEC dbo.sp_TaoDonHangTuGioHang @NguoiDungID, @TenNguoiNhan, @DienThoai, @DiaChiGiao, @PhuongThuc, @PhiVanChuyen, @DonHangID OUTPUT, @MaVoucher",
-                pUserId, pTen, pSdt, pDiaChi, pPhuongThuc, pPhiShip, pDonHangId, pVoucher);
-
-            var donHangId = Convert.ToInt64(pDonHangId.Value);
-            var donHang = await _context.DonHangs.FindAsync(donHangId);
-
-            if (donHang != null && phuongThucSql == "Chuyen_khoan")
+            cartItems = JsonSerializer.Deserialize<List<CartItemPayload>>(cartJson ?? "[]", new JsonSerializerOptions
             {
-                if (daChuyenKhoan)
-                {
-                    // Nhánh 1: Đã ghi nhận chuyển khoản ngay lúc đặt
-                    donHang.TrangThai = "Cho_xac_nhan";
-                    TempData["PaymentStatusText"] = "Đã thanh toán chuyển khoản (Mô phỏng) • Đang chờ duyệt";
-                }
-                else
-                {
-                    // Nhánh 2: Chưa chuyển khoản -> Đang chờ thanh toán trong 24 giờ
-                    donHang.TrangThai = "Cho_thanh_toan";
-                    TempData["PaymentStatusText"] = "Đang chờ thanh toán (Hạn 24 giờ kể từ lúc đặt)";
-                }
-                await _context.SaveChangesAsync();
-            }
-
-            TempData["OrderCode"] = donHang?.MaDonHang ?? $"DH-{donHangId}";
-            return RedirectToAction(nameof(OrderSuccess), new { id = donHangId });
+                PropertyNameCaseInsensitive = true
+            }) ?? new List<CartItemPayload>();
         }
-        catch (SqlException ex)
+        catch (JsonException)
         {
-            TempData["FormFullName"] = fullName;
-            TempData["FormPhone"] = phone;
-            TempData["FormEmail"] = Request.Form["email"].ToString();
-            TempData["FormAddress"] = address;
-            TempData["FormCity"] = Request.Form["province"].ToString();
-            TempData["FormDistrict"] = district;
-            TempData["FormPayment"] = Request.Form["payment"].ToString();
+            TempData["CartError"] = "Không thể đọc giỏ hàng. Vui lòng kiểm tra lại sản phẩm.";
+            return RedirectToAction(nameof(Cart));
+        }
 
-            if (ex.Message.Contains("giam gia", StringComparison.OrdinalIgnoreCase) ||
-                ex.Message.Contains("voucher", StringComparison.OrdinalIgnoreCase))
+        if (cartItems.Any(item => !int.TryParse(item.Id, out var productId) || productId <= 0 || item.Quantity < 1
+            || (item.VariantId.HasValue && item.VariantId.Value < 1)))
+        {
+            TempData["CartError"] = "Giỏ hàng chứa sản phẩm hoặc số lượng không hợp lệ.";
+            return RedirectToAction(nameof(Cart));
+        }
+
+        var normalizedItems = cartItems
+            .GroupBy(item => new { item.Id, item.VariantId })
+            .Select(group => new CartItemPayload
             {
-                TempData["VoucherError"] = ex.Message.Contains("Ma giam gia khong hop le", StringComparison.OrdinalIgnoreCase)
-                    ? "Mã giảm giá không hợp lệ, đã hết hạn hoặc đơn hàng chưa đủ điều kiện áp dụng."
-                    : ex.Message;
-            }
-            else
+                Id = group.Key.Id,
+                VariantId = group.Key.VariantId,
+                Quantity = group.Sum(item => item.Quantity)
+            })
+            .ToList();
+
+        if (normalizedItems.Count == 0 || normalizedItems.Any(item => item.Quantity > 99))
+        {
+            TempData["CartError"] = "Giỏ hàng trống hoặc số lượng sản phẩm không hợp lệ.";
+            return RedirectToAction(nameof(Cart));
+        }
+
+        var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (!long.TryParse(userIdClaim, out var userId))
+        {
+            return Challenge();
+        }
+
+        await using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+        var productIds = normalizedItems.Select(item => int.Parse(item.Id)).ToList();
+        var dbProducts = await _context.SanPhams
+            .Include(p => p.BienTheSanPhams).ThenInclude(bt => bt.KichThuoc)
+            .Include(p => p.BienTheSanPhams).ThenInclude(bt => bt.MauSac)
+            .Include(p => p.BienTheSanPhams).ThenInclude(bt => bt.TonKhos).ThenInclude(stock => stock.Kho)
+            .Where(p => productIds.Contains(p.Id))
+            .ToListAsync();
+
+        var orderCode = "DH-" + DateTime.Now.ToString("yyMMddHHmmss") + "-" + Guid.NewGuid().ToString("N")[..6].ToUpperInvariant();
+        decimal tienHang = 0;
+        var chiTietList = new List<DonHangChiTiet>();
+        var reservations = new List<(DonHangChiTiet Detail, TonKho Stock, int Quantity)>();
+
+        foreach (var item in normalizedItems)
+        {
+            var pid = int.Parse(item.Id);
+            var sp = dbProducts.FirstOrDefault(p => p.Id == pid && p.TrangThai == "Dang_ban");
+            var bienThe = sp?.BienTheSanPhams
+                .Where(variant => variant.TrangThai
+                    && (!item.VariantId.HasValue || variant.Id == item.VariantId.Value))
+                .FirstOrDefault(variant => variant.TonKhos
+                    .Where(stock => stock.Kho.TrangThai)
+                    .Sum(stock => Math.Max(0, stock.SoLuongTon - stock.SoLuongGiuCho)) >= item.Quantity);
+            if (sp == null || bienThe == null)
             {
-                TempData["CheckoutError"] = ex.Message;
+                await transaction.RollbackAsync();
+                TempData["CartError"] = "Một sản phẩm đã hết hàng hoặc không đủ số lượng. Vui lòng cập nhật giỏ hàng.";
+                return RedirectToAction(nameof(Cart));
             }
 
+            var donGia = bienThe.GiaBan > 0 ? bienThe.GiaBan : sp.GiaBan;
+            tienHang += donGia * item.Quantity;
+
+            var detail = new DonHangChiTiet
+            {
+                BienTheId = bienThe.Id,
+                TenSanPham = sp.TenSanPham,
+                Sku = bienThe.Sku,
+                Size = bienThe.KichThuoc?.MaSize ?? "M",
+                MauSac = bienThe.MauSac?.TenMau ?? "Mặc định",
+                DonGia = donGia,
+                SoLuong = item.Quantity
+            };
+            chiTietList.Add(detail);
+
+            var remainingQuantity = item.Quantity;
+            foreach (var tonKho in bienThe.TonKhos
+                .Where(stock => stock.Kho.TrangThai)
+                .OrderBy(stock => stock.KhoId))
+            {
+                var available = Math.Max(0, tonKho.SoLuongTon - tonKho.SoLuongGiuCho);
+                var reservedFromWarehouse = Math.Min(available, remainingQuantity);
+                if (reservedFromWarehouse > 0)
+                    reservations.Add((detail, tonKho, reservedFromWarehouse));
+                remainingQuantity -= reservedFromWarehouse;
+                if (remainingQuantity == 0) break;
+            }
+        }
+
+        decimal tienGiam = string.Equals(couponCode, "NEWYEAR20", StringComparison.OrdinalIgnoreCase)
+            ? Math.Min(150000, tienHang)
+            : 0;
+        decimal tongThanhToan = Math.Max(0, tienHang - tienGiam);
+        fullName = fullName.Trim();
+        phone = phone.Trim();
+        address = address.Trim();
+        province = province.Trim();
+        district = district.Trim();
+        note = note?.Trim();
+        var fullAddress = $"{address}, {district}, {province}".Trim(' ', ',');
+        if (fullName.Length > 150 || phone.Length > 20 || fullAddress.Length > 500 || (note?.Length ?? 0) > 500)
+        {
+            await transaction.RollbackAsync();
+            TempData["CartError"] = "Một số thông tin giao hàng vượt quá độ dài cho phép.";
             return RedirectToAction(nameof(Checkout));
         }
-    }
-[Authorize]
-[HttpPost]
-[ValidateAntiForgeryToken]
-public async Task<IActionResult> ConfirmTransferPaid(long orderId)
-{
-    var order = await _context.DonHangs.FirstOrDefaultAsync(d => d.Id == orderId);
-    if (order == null) return NotFound();
 
-    // Nếu đã quá 24 giờ kể từ lúc tạo đơn ở trạng thái chờ thanh toán -> tự hủy
-    if (order.TrangThai == "Cho_thanh_toan" && DateTime.Now > order.ThoiGianTao.AddHours(24))
-    {
-        order.TrangThai = "Da_huy";
-        await _context.SaveChangesAsync();
-        TempData["InvoiceMessage"] = "Đơn hàng đã quá hạn 24 giờ chưa thanh toán nên tự động chuyển sang Đã hủy.";
-        return RedirectToAction(nameof(Invoice), new { id = order.MaDonHang });
-    }
-
-    if (order.TrangThai == "Cho_thanh_toan")
-    {
-        order.TrangThai = "Cho_duyet"; // Hoặc "Cho_xac_nhan" tùy quy ước trạng thái của bạn
-        await _context.SaveChangesAsync();
-        TempData["InvoiceMessage"] = "Đã ghi nhận chuyển khoản thành công. Hóa đơn đã chuyển sang trạng thái Chờ duyệt.";
-    }
-
-    return RedirectToAction(nameof(Invoice), new { id = order.MaDonHang });
-}
-
-[Authorize]
-[HttpPost]
-[ValidateAntiForgeryToken]
-public async Task<IActionResult> ExpireUnpaidTransferOrder(long orderId)
-{
-    var order = await _context.DonHangs.FirstOrDefaultAsync(d => d.Id == orderId);
-    if (order != null && order.TrangThai == "Cho_thanh_toan" && DateTime.Now >= order.ThoiGianTao.AddHours(24))
-    {
-        order.TrangThai = "Da_huy";
-        await _context.SaveChangesAsync();
-    }
-    return RedirectToAction(nameof(Index));
-}
-    [Authorize]
-    public async Task<IActionResult> OrderSuccess(long? id)
-    {
-        var donHang = id.HasValue
-            ? await _context.DonHangs
-                .Include(d => d.DonHangChiTiets)
-                    .ThenInclude(ct => ct.BienThe)
-                        .ThenInclude(bt => bt.SanPham)
-                            .ThenInclude(sp => sp.SanPhamAnhs)
-                .FirstOrDefaultAsync(d => d.Id == id.Value)
-            : null;
-
-        ViewBag.OrderCode = donHang?.MaDonHang ?? TempData["OrderCode"]?.ToString() ?? "DH-0001";
-        ViewBag.Order = donHang;
-
-        var items = donHang?.DonHangChiTiets.Select(ct => new ProductViewModel
+        var donHang = new DonHang
         {
-            Id = ct.BienThe.SanPhamId,
-            Name = $"{ct.TenSanPham} ({ct.Size} - {ct.MauSac}) x{ct.SoLuong}",
-            Price = ct.ThanhTien ?? (ct.DonGia * ct.SoLuong),
-            Stock = ct.SoLuong,
-            Image = ct.BienThe.SanPham.SanPhamAnhs
-                .OrderByDescending(a => a.LaAnhDaiDien)
-                .Select(a => a.Url)
-                .FirstOrDefault() ?? "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600"
-        }).ToList() ?? new List<ProductViewModel>();
+            MaDonHang = orderCode,
+            NguoiDungId = userId,
+            TrangThai = "Cho_xac_nhan",
+            PhuongThucThanhToan = payment == "Bank" ? "Chuyen_khoan" : "COD",
+            TrangThaiThanhToan = "Chua_thanh_toan",
+            TenNguoiNhan = fullName,
+            DienThoaiNhan = phone,
+            DiaChiGiao = fullAddress,
+            TienHang = tienHang,
+            PhiVanChuyen = 0,
+            TienGiam = tienGiam,
+            TongThanhToan = tongThanhToan,
+            GhiChu = note,
+            ThoiGianTao = DateTime.Now,
+            ThoiGianCapNhat = DateTime.Now,
+            DonHangChiTiets = chiTietList
+        };
 
-        return View(items);
+        _context.DonHangs.Add(donHang);
+        await _context.SaveChangesAsync();
+
+        foreach (var reservation in reservations)
+        {
+            reservation.Stock.SoLuongGiuCho += reservation.Quantity;
+            _context.ChiTietGiuChos.Add(new ChiTietGiuCho
+            {
+                DonHangCtId = reservation.Detail.Id,
+                KhoId = reservation.Stock.KhoId,
+                BienTheId = reservation.Detail.BienTheId,
+                SoLuong = reservation.Quantity
+            });
+        }
+
+        _context.ThanhToans.Add(new ThanhToan
+        {
+            DonHangId = donHang.Id,
+            PhuongThuc = donHang.PhuongThucThanhToan,
+            SoTien = tongThanhToan,
+            TrangThai = "Khoi_tao",
+            ThoiGianTao = DateTime.Now
+        });
+        _context.LichSuDonHangs.Add(new LichSuDonHang
+        {
+            DonHangId = donHang.Id,
+            TrangThaiMoi = donHang.TrangThai,
+            GhiChu = "Tạo đơn từ giỏ hàng",
+            NguoiCapNhat = userId,
+            ThoiGian = DateTime.Now
+        });
+
+        var userCart = await _context.GioHangs
+            .Include(item => item.GioHangChiTiets)
+            .FirstOrDefaultAsync(item => item.NguoiDungId == userId);
+        if (userCart != null)
+            _context.GioHangChiTiets.RemoveRange(userCart.GioHangChiTiets);
+
+        await _context.SaveChangesAsync();
+        await transaction.CommitAsync();
+
+        TempData["OrderCode"] = orderCode;
+        return RedirectToAction(nameof(OrderSuccess));
+    }
+
+    // 7. TRANG ĐẶT HÀNG THÀNH CÔNG & HÓA ĐƠN
+    [Authorize]
+    public async Task<IActionResult> OrderSuccess()
+    {
+        var orderCode = TempData["OrderCode"]?.ToString();
+        TempData.Keep("OrderCode");
+        ViewBag.OrderCode = orderCode ?? "DH-261119001";
+        return await LoadOrderItemsView(orderCode);
     }
 
     [Authorize]
     public async Task<IActionResult> Invoice(string id)
     {
-        var donHang = await _context.DonHangs
+        var query = _context.DonHangs
+            .Include(d => d.NguoiDung)
             .Include(d => d.DonHangChiTiets)
                 .ThenInclude(ct => ct.BienThe)
                     .ThenInclude(bt => bt.SanPham)
                         .ThenInclude(sp => sp.SanPhamAnhs)
-            .FirstOrDefaultAsync(d => d.MaDonHang == id);
+            .AsQueryable();
+
+        var donHang = long.TryParse(id, out var orderId)
+            ? await query.FirstOrDefaultAsync(d => d.MaDonHang == id || d.Id == orderId)
+            : await query.FirstOrDefaultAsync(d => d.MaDonHang == id);
 
         ViewBag.OrderCode = donHang?.MaDonHang ?? id;
         ViewBag.Order = donHang;
@@ -597,14 +985,17 @@ public async Task<IActionResult> ExpireUnpaidTransferOrder(long orderId)
             Name = $"{ct.TenSanPham} ({ct.Size} - {ct.MauSac}) x{ct.SoLuong}",
             Price = ct.ThanhTien ?? (ct.DonGia * ct.SoLuong),
             Stock = ct.SoLuong,
-            Image = ct.BienThe.SanPham.SanPhamAnhs
-                .OrderByDescending(a => a.LaAnhDaiDien)
-                .Select(a => a.Url)
-                .FirstOrDefault() ?? "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600"
+            Image = ResolveProductImage(
+                ct.BienThe.SanPham.SanPhamAnhs
+                    .OrderByDescending(a => a.LaAnhDaiDien)
+                    .Select(a => a.Url)
+                    .FirstOrDefault(),
+                null)
         }).ToList() ?? new List<ProductViewModel>();
 
         return View(items);
     }
+
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> ExportInvoicePdf(string id)
@@ -643,16 +1034,15 @@ public async Task<IActionResult> ExpireUnpaidTransferOrder(long orderId)
         QuestPDF.Settings.UseSystemFonts = true;
         QuestPDF.Settings.ThrowOnMissingFontFamilies = false;
 
-        var pdfBytes = Document.Create(container =>
+        var pdfBytes = PdfDocument.Create(container =>
         {
             container.Page(page =>
             {
                 page.Size(PageSizes.A4);
                 page.Margin(40);
-                page.PageColor(Colors.White);
+                page.PageColor(PdfColors.White);
                 page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(10.5f).FontColor("#1E293B"));
 
-                // Header hóa đơn
                 page.Header().Column(col =>
                 {
                     col.Item().Row(row =>
@@ -660,7 +1050,7 @@ public async Task<IActionResult> ExpireUnpaidTransferOrder(long orderId)
                         row.RelativeItem().Row(brand =>
                         {
                             brand.ConstantItem(28).Height(28).Background("#18181B").AlignCenter().AlignMiddle()
-                                .Text("F").FontColor(Colors.White).Bold().FontSize(13);
+                                .Text("F").FontColor(PdfColors.White).Bold().FontSize(13);
                             brand.RelativeItem().PaddingLeft(10).AlignMiddle()
                                 .Text("FashionHub").FontSize(17).Bold().FontColor("#0F172A");
                         });
@@ -675,17 +1065,15 @@ public async Task<IActionResult> ExpireUnpaidTransferOrder(long orderId)
                     col.Item().PaddingTop(14).BorderBottom(1.5f).BorderColor("#18181B");
                 });
 
-                // Nội dung hóa đơn
                 page.Content().PaddingVertical(18).Column(col =>
                 {
                     col.Spacing(18);
 
-                    // Thông tin khách hàng & thông tin đơn
                     col.Item().Row(row =>
                     {
                         row.RelativeItem().Column(left =>
                         {
-                           left.Item().Text("KHÁCH HÀNG").FontSize(8.5f).Bold().FontColor("#94A3B8");
+                            left.Item().Text("KHÁCH HÀNG").FontSize(8.5f).Bold().FontColor("#94A3B8");
                             left.Item().PaddingTop(3).Text(order.TenNguoiNhan).FontSize(12).Bold().FontColor("#0F172A");
                             left.Item().PaddingTop(4).Text(order.DienThoaiNhan).FontSize(10).FontColor("#475569");
                             left.Item().PaddingTop(2).Text(order.DiaChiGiao).FontSize(10).FontColor("#475569");
@@ -700,7 +1088,6 @@ public async Task<IActionResult> ExpireUnpaidTransferOrder(long orderId)
                         });
                     });
 
-                    // Bảng chi tiết sản phẩm
                     col.Item().PaddingTop(6).Table(table =>
                     {
                         table.ColumnsDefinition(columns =>
@@ -740,7 +1127,6 @@ public async Task<IActionResult> ExpireUnpaidTransferOrder(long orderId)
                         }
                     });
 
-                    // Khối tổng tiền thanh toán
                     col.Item().AlignRight().Width(240).Column(sumCol =>
                     {
                         sumCol.Spacing(6);
@@ -771,7 +1157,6 @@ public async Task<IActionResult> ExpireUnpaidTransferOrder(long orderId)
             });
         }).GeneratePdf();
 
-        // Lưu trữ bản sao PDF hóa đơn vào wwwroot/invoices/
         var invoiceDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "invoices");
         Directory.CreateDirectory(invoiceDir);
         var fileName = $"HoaDon_{order.MaDonHang}.pdf";
@@ -780,165 +1165,51 @@ public async Task<IActionResult> ExpireUnpaidTransferOrder(long orderId)
         return File(pdfBytes, "application/pdf", fileName);
     }
 
-    private async Task<List<CartItemViewModel>> GetUserCartItemsAsync()
+    private async Task<IActionResult> LoadOrderItemsView(string? orderCode)
     {
-        if (!long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
-            return [];
-
-        var gioHang = await _context.GioHangs
-            .Include(g => g.GioHangChiTiets)
-                .ThenInclude(ct => ct.BienThe)
-                    .ThenInclude(bt => bt.SanPham)
-                        .ThenInclude(sp => sp.DanhMuc)
-            .Include(g => g.GioHangChiTiets)
-                .ThenInclude(ct => ct.BienThe)
-                    .ThenInclude(bt => bt.SanPham)
-                        .ThenInclude(sp => sp.SanPhamAnhs)
-            .Include(g => g.GioHangChiTiets)
-                .ThenInclude(ct => ct.BienThe)
-                    .ThenInclude(bt => bt.KichThuoc)
-            .Include(g => g.GioHangChiTiets)
-                .ThenInclude(ct => ct.BienThe)
-                    .ThenInclude(bt => bt.MauSac)
-            .Include(g => g.GioHangChiTiets)
-                .ThenInclude(ct => ct.BienThe)
-                    .ThenInclude(bt => bt.TonKhos)
-            .FirstOrDefaultAsync(g => g.NguoiDungId == userId);
-
-        if (gioHang == null) return [];
-
-        return gioHang.GioHangChiTiets.Select(ct => new CartItemViewModel
+        if (!string.IsNullOrWhiteSpace(orderCode))
         {
-            CartItemId = ct.Id,
-            ProductId = ct.BienThe.SanPhamId,
-            VariantId = ct.BienTheId,
-            Name = ct.BienThe.SanPham.TenSanPham,
-            Category = ct.BienThe.SanPham.DanhMuc?.TenDanhMuc ?? "",
-            Size = ct.BienThe.KichThuoc.MaSize,
-            Color = ct.BienThe.MauSac.TenMau,
-            Price = ct.BienThe.GiaBan,
-            Quantity = ct.SoLuong,
-            MaxStock = ct.BienThe.TonKhos.Sum(tk => tk.SoLuongTon - tk.SoLuongGiuCho),
-            Image = ct.BienThe.SanPham.SanPhamAnhs
-                .OrderByDescending(a => a.LaAnhDaiDien)
-                .Select(a => a.Url)
-                .FirstOrDefault() ?? "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600"
-        }).ToList();
-    }
+            if (!long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+                return Challenge();
 
-    // =========================================================================
-    // ĐĂNG KÝ, ĐĂNG NHẬP, ĐĂNG XUẤT KẾT NỐI SQL SERVER
-    // =========================================================================
+            var order = await _context.DonHangs
+                .Where(d => d.MaDonHang == orderCode && d.NguoiDungId == userId)
+                .Include(d => d.DonHangChiTiets)
+                    .ThenInclude(ct => ct.BienThe)
+                        .ThenInclude(bt => bt.SanPham)
+                            .ThenInclude(sp => sp.SanPhamAnhs)
+                .Include(d => d.DonHangChiTiets)
+                    .ThenInclude(ct => ct.BienThe)
+                        .ThenInclude(bt => bt.SanPham)
+                            .ThenInclude(sp => sp.DanhMuc)
+                .FirstOrDefaultAsync(d => d.MaDonHang == orderCode);
 
-    [HttpGet]
-    public IActionResult Register() => View(new RegisterViewModel());
+            if (order != null && order.DonHangChiTiets.Any())
+            {
+                ViewBag.Order = order;
+                var list = order.DonHangChiTiets.Select(ct => new ProductViewModel
+                {
+                    Id = ct.BienThe.SanPhamId,
+                    Name = $"{ct.TenSanPham} (x{ct.SoLuong})",
+                    Category = ct.BienThe.SanPham?.DanhMuc?.TenDanhMuc ?? "",
+                    Price = ct.ThanhTien ?? (ct.DonGia * ct.SoLuong),
+                    Stock = ct.SoLuong,
+                    Image = ResolveProductImage(
+                        ct.BienThe.SanPham?.SanPhamAnhs.FirstOrDefault()?.Url,
+                        ct.BienThe.SanPham?.DanhMuc?.TenDanhMuc)
+                }).ToList();
 
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Register(RegisterViewModel model)
-    {
-        if (!ModelState.IsValid) return View(model);
-
-        var email = model.Email.Trim();
-        var emailChuan = email.ToLowerInvariant();
-
-        if (await _context.NguoiDungs.AnyAsync(u => u.EmailChuan == emailChuan))
-        {
-            ModelState.AddModelError("Email", "Email đã được sử dụng.");
-            return View(model);
+                return View(list);
+            }
         }
 
-        var nguoiDung = new NguoiDung
-        {
-            Email = email,
-            HoTen = model.FullName.Trim(),
-            SoDienThoai = model.Phone.Trim(),
-            MatKhauHash = BCrypt.Net.BCrypt.HashPassword(model.Password),
-            TrangThai = "Hoat_dong",
-            ThoiGianTao = DateTime.Now,
-            ThoiGianCapNhat = DateTime.Now
-        };
-
-        // Gán vai trò mặc định là KHACH_HANG
-        var vaiTroKhach = await _context.VaiTros.FirstOrDefaultAsync(v => v.MaVaiTro == "KHACH_HANG");
-        if (vaiTroKhach != null)
-        {
-            nguoiDung.VaiTros.Add(vaiTroKhach);
-        }
-
-        _context.NguoiDungs.Add(nguoiDung);
-        await _context.SaveChangesAsync();
-
-        TempData["RegisterSuccess"] = "Đăng ký thành công. Hãy đăng nhập.";
-        return RedirectToAction(nameof(Login));
+        return Cart();
     }
 
-    [HttpGet]
-    public IActionResult Login() => View(new LoginViewModel());
-
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Login(LoginViewModel model)
+    private class CartItemPayload
     {
-        if (!ModelState.IsValid) return View(model);
-
-        var emailChuan = model.Email.Trim().ToLowerInvariant();
-        var user = await _context.NguoiDungs
-            .Include(u => u.VaiTros)
-            .FirstOrDefaultAsync(u => u.EmailChuan == emailChuan);
-
-        if (user == null || !BCrypt.Net.BCrypt.Verify(model.Password, user.MatKhauHash))
-        {
-            ModelState.AddModelError("", "Email hoặc mật khẩu không đúng.");
-            return View(model);
-        }
-
-        if (user.TrangThai != "Hoat_dong")
-        {
-            ModelState.AddModelError("", "Tài khoản của bạn đã bị khóa.");
-            return View(model);
-        }
-
-        // Chuyển mã vai trò SQL sang tên Role giao diện đang sử dụng
-        var maVaiTro = user.VaiTros.Select(v => v.MaVaiTro).FirstOrDefault() ?? "KHACH_HANG";
-        var appRole = maVaiTro switch
-        {
-            "ADMIN" => "Admin",
-            "NHAN_VIEN" or "QL_KHO" or "QL_SAN_PHAM" => "Employee",
-            _ => "Customer"
-        };
-
-        var claims = new List<Claim>
-        {
-            new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-            new(ClaimTypes.Name, user.HoTen),
-            new(ClaimTypes.Email, user.Email),
-            new(ClaimTypes.Role, appRole)
-        };
-
-        var identity = new ClaimsIdentity(claims, "ShopCookie", ClaimTypes.Name, ClaimTypes.Role);
-        await HttpContext.SignInAsync("ShopCookie", new ClaimsPrincipal(identity), new AuthenticationProperties
-        {
-            IsPersistent = model.RememberMe,
-            ExpiresUtc = model.RememberMe ? DateTimeOffset.UtcNow.AddDays(30) : DateTimeOffset.UtcNow.AddHours(8)
-        });
-
-        return appRole switch
-        {
-            "Admin" => RedirectToAction("Index", "Home"),
-            "Employee" => RedirectToAction("Orders", "Management"),
-            _ => RedirectToAction(nameof(Index))
-        };
+        public string Id { get; set; } = "";
+        public long? VariantId { get; set; }
+        public int Quantity { get; set; }
     }
-
-    [Authorize]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Logout()
-    {
-        await HttpContext.SignOutAsync("ShopCookie");
-        return RedirectToAction(nameof(Index));
-    }
-
-    public IActionResult AccessDenied() => View();
 }

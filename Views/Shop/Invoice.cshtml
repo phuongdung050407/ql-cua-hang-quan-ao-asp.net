@@ -1,269 +1,123 @@
 @model List<ProductViewModel>
 @{
-    Layout = null;
-    var order = ViewBag.Order as ShopProject.Models.Entities.DonHang;
-    var trangThaiText = order?.TrangThai switch
+    Layout = "_ShopLayout";
+    ViewData["Title"] = "Hóa đơn " + (ViewBag.OrderCode ?? "");
+    var order = ViewBag.Order as ShopProject.Models.DonHang;
+
+    string MapStatus(string? s) => s switch
     {
         "Cho_xac_nhan" => "Chờ xác nhận",
         "Da_xac_nhan" => "Đã xác nhận",
         "Dang_giao" => "Đang giao",
         "Da_giao" => "Hoàn tất",
         "Da_huy" => "Đã hủy",
-        _ => order?.TrangThai ?? "Chờ xác nhận"
+        _ => "Chờ xác nhận"
     };
-    var phuongThucText = order?.PhuongThucThanhToan switch
+
+    string MapPayment(string? p) => p switch
     {
         "Chuyen_khoan" => "Chuyển khoản ngân hàng",
         "Vi_dien_tu" => "Ví điện tử",
         _ => "Thanh toán khi nhận hàng (COD)"
     };
+
+    var tamTinh = order?.TienHang ?? Model.Sum(x => x.Price);
+    var phiShip = order?.PhiVanChuyen ?? 0;
+    var giamGia = order?.TienGiam ?? 0;
+    var tongCong = order?.TongThanhToan ?? (tamTinh + phiShip - giamGia);
 }
-<style>
-    .invoice-action-bar {
-        display: flex !important;
-        justify-content: space-between !important;
-        align-items: center !important;
-        width: 100% !important;
-        margin-top: 28px !important;
-        padding-top: 22px !important;
-        border-top: 1px dashed #e2e8f0 !important;
-    }
-    .invoice-action-bar > * {
-        margin: 0 !important;
-        flex: 0 0 auto !important;
-    }
-    .btn-inv-sym {
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        gap: 8px !important;
-        width: 190px !important;
-        height: 44px !important;
-        padding: 0 18px !important;
-        border-radius: 8px !important;
-        font-size: 13.5px !important;
-        font-weight: 600 !important;
-        white-space: nowrap !important;
-        box-sizing: border-box !important;
-        cursor: pointer !important;
-        transition: all 0.16s ease !important;
-    }
-    .btn-inv-back {
-        border: 1px solid #cbd5e1 !important;
-        background: #ffffff !important;
-        color: #334155 !important;
-    }
-    .btn-inv-back:hover {
-        background: #f8fafc !important;
-        border-color: #94a3b8 !important;
-        color: #0f172a !important;
-        transform: translateX(-2px);
-    }
-    .btn-inv-pdf {
-        border: 1px solid #18181b !important;
-        background: #18181b !important;
-        color: #ffffff !important;
-        box-shadow: 0 4px 12px rgba(24, 24, 27, 0.15) !important;
-    }
-    .btn-inv-pdf:hover {
-        background: #27272a !important;
-        transform: translateY(-1px);
-    }
-</style>
 
-
-
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Hóa đơn @ViewBag.OrderCode</title>
-    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="~/css/store.css" asp-append-version="true">
-</head>
-<body>
-    <main class="invoice-page">
-        <article class="invoice">
-            <header>
-                <div>
-                    <span class="invoice-logo">F</span>
-                    <h1>FashionHub</h1>
-                </div>
-                <div class="invoice-title">
-                    <span>HÓA ĐƠN</span>
-                    <strong>@(order?.MaDonHang ?? ViewBag.OrderCode)</strong>
-                </div>
-            </header>
-
-            <div class="invoice-info">
-                <div>
-                    <small>KHÁCH HÀNG</small>
-                    <strong>@(order?.TenNguoiNhan ?? "Khách hàng")</strong>
-                    <p>@(order?.DienThoaiNhan ?? "")<br>@(order?.DiaChiGiao ?? "")</p>
-                </div>
-                <div>
-                    <small>THÔNG TIN ĐƠN</small>
-                    <p>
-                        Ngày lập: @(order?.ThoiGianTao.ToString("dd/MM/yyyy HH:mm") ?? DateTime.Now.ToString("dd/MM/yyyy"))<br>
-                        Phương thức: @phuongThucText<br>
-                        Trạng thái: @trangThaiText
-                    </p>
-                </div>
+<main class="invoice-page">
+    <article class="invoice">
+        <header>
+            <div>
+                <span class="invoice-logo">F</span>
+                <h1>FashionHub</h1>
             </div>
-
-            <table class="invoice-table">
-                <thead>
-                    <tr>
-                        <th>Sản phẩm</th>
-                        <th>SL</th>
-                        <th>Đơn giá</th>
-                        <th>Thành tiền</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if (order != null && order.DonHangChiTiets.Count > 0)
-                    {
-                        foreach (var ct in order.DonHangChiTiets)
-                        {
-                            var thanhTien = ct.ThanhTien ?? (ct.DonGia * ct.SoLuong);
-                            <tr>
-                                <td><strong>@ct.TenSanPham</strong> <small>(@ct.Size - @ct.MauSac)</small></td>
-                                <td>@ct.SoLuong</td>
-                                <td>@ct.DonGia.ToString("N0") đ</td>
-                                <td>@thanhTien.ToString("N0") đ</td>
-                            </tr>
-                        }
-                    }
-                    else
-                    {
-                        foreach (var p in Model)
-                        {
-                            <tr>
-                                <td><strong>@p.Name</strong></td>
-                                <td>@p.Stock</td>
-                                <td>@p.Price.ToString("N0") đ</td>
-                                <td>@p.Price.ToString("N0") đ</td>
-                            </tr>
-                        }
-                    }
-                </tbody>
-            </table>
-            
-
-            <div class="invoice-total">
-                <div><span>Tạm tính</span><strong>@((order?.TienHang ?? Model.Sum(x => x.Price)).ToString("N0")) đ</strong></div>
-                <div><span>Phí vận chuyển</span><strong>@((order?.PhiVanChuyen ?? 0m).ToString("N0")) đ</strong></div>
-                @if ((order?.TienGiam ?? 0m) > 0)
-                {
-                    <div><span>Giảm giá</span><strong>-@order!.TienGiam.ToString("N0") đ</strong></div>
-                }
-                <div><span>Tổng cộng</span><strong>@((order?.TongThanhToan ?? Model.Sum(x => x.Price)).ToString("N0")) đ</strong></div>
+            <div class="invoice-title">
+                <span>HÓA ĐƠN</span>
+                <strong>@(order?.MaDonHang ?? ViewBag.OrderCode)</strong>
             </div>
+        </header>
 
-            <footer>
-                <p>Cảm ơn quý khách đã mua sắm tại FashionHub.</p>
-                
-<div class="invoice-action-bar">
-    <button type="button" class="btn-inv-sym btn-inv-back" onclick="goBackPrevious()">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
-            <path d="M19 12H5"></path>
-            <path d="M12 19l-7-7 7-7"></path>
-        </svg>
-        <span>Về trang trước</span>
-    </button>
-
-    <form method="post" asp-action="ExportInvoicePdf" asp-controller="Shop">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="id" value="@Context.Request.RouteValues["id"]" />
-        <button type="submit" class="btn-inv-sym btn-inv-pdf">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            <span>Xuất file PDF</span>
-        </button>
-    </form>
-</div>
-@if (order != null && order.TrangThai == "Cho_thanh_toan")
-{
-    var deadlineMs = new DateTimeOffset(order.ThoiGianTao.AddHours(24)).ToUnixTimeMilliseconds();
-    <div id="transfer-countdown-box"
-         style="margin-top:16px;padding:14px 16px;border:1px solid #f59e0b;background:#fffbeb;border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <div>
-            <div style="font-weight:700;color:#92400e">Đang chờ thanh toán chuyển khoản</div>
-            <div style="font-size:13px;color:#78350f">
-                Thời gian còn lại để thanh toán: <strong id="countdown-timer">24:00:00</strong>. Hết hạn sẽ tự động hủy đơn.
+        <div class="invoice-info">
+            <div>
+                <small>KHÁCH HÀNG</small>
+                <strong>@(order?.TenNguoiNhan ?? "Khách hàng")</strong>
+                <p>
+                    @(order?.DienThoaiNhan ?? "")<br />
+                    @(order?.DiaChiGiao ?? "")
+                </p>
+            </div>
+            <div>
+                <small>THÔNG TIN ĐƠN</small>
+                <p>
+                    Ngày lập: @(order != null ? order.ThoiGianTao.ToString("dd/MM/yyyy HH:mm") : DateTime.Now.ToString("dd/MM/yyyy"))<br />
+                    Phương thức: @MapPayment(order?.PhuongThucThanhToan)<br />
+                    Trạng thái: @MapStatus(order?.TrangThai)
+                </p>
             </div>
         </div>
 
-        <form method="post" asp-action="ConfirmTransferPaid" asp-controller="Shop" style="margin:0">
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="orderId" value="@order.Id" />
-            <button type="submit"
-                    style="background:#18181b;color:#ffffff;border:0;border-radius:6px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer">
-                Xác nhận đã chuyển khoản
-            </button>
-        </form>
-    </div>
-
-    <form id="auto-expire-form" method="post" asp-action="ExpireUnpaidTransferOrder" asp-controller="Shop" style="display:none">
-        @Html.AntiForgeryToken()
-        <input type="hidden" name="orderId" value="@order.Id" />
-    </form>
-
-    <script>
-        (function () {
-            const deadline = @deadlineMs;
-            const timerEl = document.getElementById('countdown-timer');
-            let expiredTriggered = false;
-
-            function tick() {
-                const diff = deadline - Date.now();
-                if (diff <= 0) {
-                    if (timerEl) timerEl.textContent = '00:00:00';
-                    if (!expiredTriggered) {
-                        expiredTriggered = true;
-                        document.getElementById('auto-expire-form')?.submit();
+        <table class="invoice-table">
+            <thead>
+                <tr>
+                    <th>Sản phẩm</th>
+                    <th>SL</th>
+                    <th>Đơn giá</th>
+                    <th>Thành tiền</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (order != null && order.DonHangChiTiets.Any())
+                {
+                    foreach (var ct in order.DonHangChiTiets)
+                    {
+                        var thanhTien = ct.ThanhTien ?? (ct.DonGia * ct.SoLuong);
+                        <tr>
+                            <td>
+                                <strong>@ct.TenSanPham</strong>
+                                <small>Size: @ct.Size — Màu: @ct.MauSac</small>
+                            </td>
+                            <td>@ct.SoLuong</td>
+                            <td>@ct.DonGia.ToString("N0") đ</td>
+                            <td>@thanhTien.ToString("N0") đ</td>
+                        </tr>
                     }
-                    return;
                 }
-                const totalSec = Math.floor(diff / 1000);
-                const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
-                const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
-                const s = String(totalSec % 60).padStart(2, '0');
-                if (timerEl) timerEl.textContent = `${h}:${m}:${s}`;
+                else
+                {
+                    foreach (var p in Model)
+                    {
+                        var qty = p.Stock > 0 ? p.Stock : 1;
+                        var unitPrice = p.Price / qty;
+                        <tr>
+                            <td>
+                                <strong>@p.Name</strong>
+                                <small>@p.Category</small>
+                            </td>
+                            <td>@qty</td>
+                            <td>@unitPrice.ToString("N0") đ</td>
+                            <td>@p.Price.ToString("N0") đ</td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+
+        <div class="invoice-total">
+            <div><span>Tạm tính</span><strong>@tamTinh.ToString("N0") đ</strong></div>
+            @if (giamGia > 0)
+            {
+                <div><span>Giảm giá</span><strong>-@giamGia.ToString("N0") đ</strong></div>
             }
+            <div><span>Phí vận chuyển</span><strong>@phiShip.ToString("N0") đ</strong></div>
+            <div><span>Tổng cộng</span><strong>@tongCong.ToString("N0") đ</strong></div>
+        </div>
 
-            tick();
-            setInterval(tick, 1000);
-        })();
-    </script>
-}
-
-<script>
-    function goBackPrevious() {
-        // 1. Nếu có lịch sử trang trước đó trong cùng tab -> quay lùi đúng trang trước
-        if (window.history.length > 1 && document.referrer) {
-            window.history.back();
-            return;
-        }
-
-        // 2. Nếu hóa đơn được mở sang tab mới (từ trang Quản lý đơn hàng) -> đóng tab này để về lại tab gốc
-        if (window.opener && !window.opener.closed) {
-            window.opener.focus();
-            window.close();
-            return;
-        }
-
-        // 3. Dự phòng khi mở trực tiếp bằng đường dẫn
-        const isAdmin = @(User.IsInRole("Admin") ? "true" : "false");
-        window.location.href = isAdmin ? '/Management/Orders' : '/Shop';
-    }
-</script>
-            </footer>
-        </article>
-    </main>
-</body>
-</html>
+        <footer>
+            <p class="mb-0">Cảm ơn quý khách đã mua sắm tại FashionHub.</p>
+            <button type="button" onclick="window.print()" class="checkout-button">In hóa đơn</button>
+        </footer>
+    </article>
+</main>

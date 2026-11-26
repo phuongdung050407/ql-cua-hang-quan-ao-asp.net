@@ -7,51 +7,33 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using ShopProject.Models;
-using ShopProject.Models.Entities;
 
 namespace ShopProject.Controllers;
 
 [Authorize(Roles = "Admin,Employee")]
 public class ManagementController : Controller
 {
-    private readonly ClothingShopDbContext _context;
+    private readonly ClothingShopContext _context;
 
-    public ManagementController(ClothingShopDbContext context)
+    public ManagementController(ClothingShopContext context)
     {
         _context = context;
     }
 
     // =========================================================================
-    // 1. QUẢN LÝ ĐƠN ĐẶT HÀNG (GỌI sp_CapNhatTrangThaiDon)
+    // 1. QUẢN LÝ ĐƠN ĐẶT HÀNG (THEO origin/main ĐỂ KHỚP VIEW Orders.cshtml)
     // =========================================================================
 
-    public async Task<IActionResult> Orders(string? search, string? status)
+    public async Task<IActionResult> Orders()
     {
-        var firstDayOfMonth = new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1);
-
-        ViewBag.PendingCount = await _context.DonHangs.CountAsync(d => d.TrangThai == "Cho_xac_nhan" || d.TrangThai == "Da_xac_nhan");
-        ViewBag.ShippingCount = await _context.DonHangs.CountAsync(d => d.TrangThai == "Dang_giao");
-        ViewBag.CompletedCount = await _context.DonHangs.CountAsync(d => d.TrangThai == "Da_giao");
-        ViewBag.MonthCount = await _context.DonHangs.CountAsync(d => d.ThoiGianTao >= firstDayOfMonth);
-        ViewBag.Search = search;
-        ViewBag.Status = status;
-
-        var query = _context.DonHangs.AsQueryable();
-
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var kw = search.Trim();
-            query = query.Where(d => d.MaDonHang.Contains(kw) || d.TenNguoiNhan.Contains(kw) || d.DienThoaiNhan.Contains(kw));
-        }
-
-        if (!string.IsNullOrWhiteSpace(status))
-        {
-            query = query.Where(d => d.TrangThai == status);
-        }
-
-        var orders = await query
+        var orders = await _context.DonHangs
             .OrderByDescending(d => d.ThoiGianTao)
             .ToListAsync();
+
+        ViewBag.PendingCount = orders.Count(o => o.TrangThai == "Cho_xac_nhan" || o.TrangThai == "Da_xac_nhan");
+        ViewBag.ShippingCount = orders.Count(o => o.TrangThai == "Dang_giao");
+        ViewBag.CompletedCount = orders.Count(o => o.TrangThai == "Da_giao");
+        ViewBag.TotalMonthCount = orders.Count;
 
         return View(orders);
     }
@@ -60,30 +42,29 @@ public class ManagementController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> UpdateOrderStatus(long id, string status)
     {
-        long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId);
-
-        var pId = new SqlParameter("@DonHangID", System.Data.SqlDbType.BigInt) { Value = id };
-        var pStatus = new SqlParameter("@TrangThaiMoi", System.Data.SqlDbType.VarChar, 30) { Value = status };
-        var pUser = new SqlParameter("@NguoiThucHien", System.Data.SqlDbType.BigInt) { Value = userId > 0 ? userId : DBNull.Value };
-        var pNote = new SqlParameter("@GhiChu", System.Data.SqlDbType.NVarChar, 300) { Value = "Cập nhật từ trang quản trị" };
-
-        try
+        var newStatus = status switch
         {
-            await _context.Database.ExecuteSqlRawAsync(
-                "EXEC dbo.sp_CapNhatTrangThaiDon @DonHangID, @TrangThaiMoi, @NguoiThucHien, @GhiChu",
-                pId, pStatus, pUser, pNote);
-            TempData["OrderSuccess"] = "Đã cập nhật trạng thái đơn hàng thành công.";
-        }
-        catch (SqlException ex)
-        {
-            TempData["OrderError"] = ex.Message;
-        }
+            "Chờ xử lý" => "Cho_xac_nhan",
+            "Đang xử lý" or "Đã xác nhận" => "Da_xac_nhan",
+            "Đang giao" => "Dang_giao",
+            "Hoàn tất" => "Da_giao",
+            "Đã hủy" => "Da_huy",
+            _ => null
+        };
+        if (newStatus == null)
+            return BadRequest("Trạng thái đơn hàng không hợp lệ.");
+
+        var userId = long.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var parsedUserId)
+            ? parsedUserId
+            : (long?)null;
+        await _context.Database.ExecuteSqlInterpolatedAsync(
+            $"EXEC dbo.sp_CapNhatTrangThaiDon @DonHangID={id}, @TrangThaiMoi={newStatus}, @NguoiCapNhat={userId}, @GhiChu={status}");
 
         return RedirectToAction(nameof(Orders));
     }
 
     // =========================================================================
-    // 2. QUẢN LÝ KHO HÀNG (CẢNH BÁO TỒN KHO & NHẬP EXCEL)
+    // 2. QUẢN LÝ KHO HÀNG & PHIẾU NHẬP (PHẦN CỦA BẠN)
     // =========================================================================
 
     public async Task<IActionResult> Inventory(string? search, int? khoId, string? alertFilter)
@@ -547,7 +528,7 @@ public class ManagementController : Controller
     }
 
     // =========================================================================
-    // 3. QUẢN LÝ DANH MỤC SẢN PHẨM
+    // 3. QUẢN LÝ DANH MỤC SẢN PHẨM (PHẦN CỦA BẠN)
     // =========================================================================
 
     private static string NormalizeSizeType(string? rawSizeType, string categoryName, string? icon)
@@ -768,7 +749,7 @@ public class ManagementController : Controller
     }
 
     // =========================================================================
-    // 4. QUẢN LÝ SẢN PHẨM, TỰ ĐỘNG TÍNH LỢI NHUẬN & GỢI Ý XU HƯỚNG
+    // 4. QUẢN LÝ SẢN PHẨM & BIẾN THỂ (PHẦN CỦA BẠN)
     // =========================================================================
 
     private async Task<int> ResolveMauSacIdAsync(int? mauSacId, string? tenMauMoi)
@@ -982,179 +963,190 @@ public class ManagementController : Controller
         return View(items);
     }
 
-    [Authorize(Roles = "Admin")]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreateProduct(
-        string tenSanPham,
-        int danhMucId,
-        decimal giaGoc,
-        decimal tyLeLoiNhuan,
-        decimal? giaBan,
-        int kichThuocId,
-        int? mauSacId,
-        string? tenMauMoi,
-        int soLuongTon,
-        string? imageUrl,
-        string? moTa)
+  [Authorize(Roles = "Admin")]
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> CreateProduct(
+    string tenSanPham,
+    int danhMucId,
+    decimal giaGoc,
+    decimal tyLeLoiNhuan,
+    decimal? giaBan,
+    int kichThuocId,
+    int? mauSacId,
+    string? tenMauMoi,
+    int soLuongTon,
+    string? imageUrl,
+    string? moTa)
+{
+    if (string.IsNullOrWhiteSpace(tenSanPham) || giaGoc <= 0)
     {
-        if (string.IsNullOrWhiteSpace(tenSanPham) || giaGoc <= 0)
+        TempData["ProductError"] = "Vui lòng nhập tên sản phẩm và giá gốc hợp lệ (> 0 đ).";
+        return RedirectToAction(nameof(Products));
+    }
+
+    var safeMargin = Math.Max(0m, tyLeLoiNhuan);
+    var computedPrice = Math.Round(giaGoc * (1m + safeMargin / 100m) / 1000m) * 1000m;
+    var rawPrice = (giaBan.HasValue && giaBan.Value > 0) ? giaBan.Value : computedPrice;
+    var finalPrice = Math.Max(giaGoc, rawPrice);
+    var effectiveMargin = giaGoc > 0m
+        ? Math.Max(0m, Math.Round(((finalPrice - giaGoc) * 100m / giaGoc) * 10m) / 10m)
+        : 0m;
+
+    var resolvedColorId = await ResolveMauSacIdAsync(mauSacId, tenMauMoi);
+
+    var maSp = "SP-" + DateTime.Now.ToString("yyMMddHHmmss");
+    var sp = new SanPham
+    {
+        MaSanPham = maSp,
+        TenSanPham = tenSanPham.Trim(),
+        DanhMucId = danhMucId,
+        MoTa = moTa?.Trim(),
+        GiaGoc = giaGoc,
+        GiaBan = finalPrice,
+        TrangThai = "Dang_ban",
+        ThoiGianTao = DateTime.Now,
+        ThoiGianCapNhat = DateTime.Now
+    };
+    _context.SanPhams.Add(sp);
+    await _context.SaveChangesAsync();
+
+    var bienThe = new BienTheSanPham
+    {
+        SanPhamId = sp.Id,
+        Sku = $"{maSp}-S{kichThuocId}-M{resolvedColorId}",
+        KichThuocId = kichThuocId,
+        MauSacId = resolvedColorId,
+        GiaBan = finalPrice,
+        TrangThai = true
+    };
+    _context.BienTheSanPhams.Add(bienThe);
+    await _context.SaveChangesAsync();
+
+    var khoMacDinh = await _context.Khos.FirstOrDefaultAsync(k => k.TrangThai);
+    if (khoMacDinh != null)
+    {
+        _context.TonKhos.Add(new TonKho
         {
-            TempData["ProductError"] = "Vui lòng nhập tên sản phẩm và giá gốc hợp lệ (> 0 đ).";
-            return RedirectToAction(nameof(Products));
+            KhoId = khoMacDinh.Id,
+            BienTheId = bienThe.Id,
+            SoLuongTon = Math.Max(0, soLuongTon),
+            SoLuongGiuCho = 0
+        });
+    }
+
+    var finalImg = string.IsNullOrWhiteSpace(imageUrl)
+        ? "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600"
+        : imageUrl.Trim();
+
+    _context.SanPhamAnhs.Add(new SanPhamAnh
+    {
+        SanPhamId = sp.Id,
+        Url = finalImg,
+        LaAnhDaiDien = true
+    });
+
+    await _context.SaveChangesAsync();
+    var profitPerUnit = Math.Max(0m, finalPrice - giaGoc);
+    TempData["ProductSuccess"] = $"Đã tạo \"{sp.TenSanPham}\" — Giá gốc: {giaGoc:N0} đ | Giá bán: {finalPrice:N0} đ (Lãi {effectiveMargin:0.#}%, +{profitPerUnit:N0} đ/sp).";
+    return RedirectToAction(nameof(Products));
+}
+
+[Authorize(Roles = "Admin")]
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> EditProduct(
+    int id,
+    string tenSanPham,
+    int danhMucId,
+    decimal giaGoc,
+    decimal tyLeLoiNhuan,
+    decimal? giaBan,
+    string? imageUrl,
+    string? moTa)
+{
+    var sp = await _context.SanPhams
+        .Include(s => s.SanPhamAnhs)
+        .Include(s => s.BienTheSanPhams)
+        .FirstOrDefaultAsync(s => s.Id == id);
+
+    if (sp == null || string.IsNullOrWhiteSpace(tenSanPham) || giaGoc <= 0)
+    {
+        TempData["ProductError"] = "Thông tin cập nhật sản phẩm không hợp lệ.";
+        return RedirectToAction(nameof(Products));
+    }
+
+    var safeMargin = Math.Max(0m, tyLeLoiNhuan);
+    var computedPrice = Math.Round(giaGoc * (1m + safeMargin / 100m) / 1000m) * 1000m;
+    var rawPrice = (giaBan.HasValue && giaBan.Value > 0) ? giaBan.Value : computedPrice;
+    var finalPrice = Math.Max(giaGoc, rawPrice);
+    var effectiveMargin = giaGoc > 0m
+        ? Math.Max(0m, Math.Round(((finalPrice - giaGoc) * 100m / giaGoc) * 10m) / 10m)
+        : 0m;
+
+    sp.TenSanPham = tenSanPham.Trim();
+    sp.DanhMucId = danhMucId;
+    sp.GiaGoc = giaGoc;
+    sp.GiaBan = finalPrice;
+    sp.MoTa = moTa?.Trim();
+    sp.ThoiGianCapNhat = DateTime.Now;
+
+    foreach (var bt in sp.BienTheSanPhams)
+    {
+        bt.GiaBan = finalPrice;
+    }
+
+    if (!string.IsNullOrWhiteSpace(imageUrl))
+    {
+        var mainImg = sp.SanPhamAnhs.OrderByDescending(a => a.LaAnhDaiDien).FirstOrDefault();
+        if (mainImg != null)
+        {
+            mainImg.Url = imageUrl.Trim();
         }
-
-        var resolvedColorId = await ResolveMauSacIdAsync(mauSacId, tenMauMoi);
-
-        var computedPrice = Math.Round(giaGoc * (1 + Math.Max(0, tyLeLoiNhuan) / 100m) / 1000m) * 1000m;
-        var finalPrice = (giaBan.HasValue && giaBan.Value > 0) ? giaBan.Value : computedPrice;
-
-        var maSp = "SP-" + DateTime.Now.ToString("yyMMddHHmmss");
-        var sp = new SanPham
+        else
         {
-            MaSanPham = maSp,
-            TenSanPham = tenSanPham.Trim(),
-            DanhMucId = danhMucId,
-            MoTa = moTa?.Trim(),
-            GiaGoc = giaGoc,
-            GiaBan = finalPrice,
-            TrangThai = "Dang_ban",
-            ThoiGianTao = DateTime.Now,
-            ThoiGianCapNhat = DateTime.Now
-        };
-        _context.SanPhams.Add(sp);
-        await _context.SaveChangesAsync();
-
-        var bienThe = new BienTheSanPham
-        {
-            SanPhamId = sp.Id,
-            Sku = $"{maSp}-S{kichThuocId}-M{resolvedColorId}",
-            KichThuocId = kichThuocId,
-            MauSacId = resolvedColorId,
-            GiaBan = finalPrice,
-            TrangThai = true
-        };
-        _context.BienTheSanPhams.Add(bienThe);
-        await _context.SaveChangesAsync();
-
-        var khoMacDinh = await _context.Khos.FirstOrDefaultAsync(k => k.TrangThai);
-        if (khoMacDinh != null)
-        {
-            _context.TonKhos.Add(new TonKho
+            _context.SanPhamAnhs.Add(new SanPhamAnh
             {
-                KhoId = khoMacDinh.Id,
-                BienTheId = bienThe.Id,
-                SoLuongTon = Math.Max(0, soLuongTon),
-                SoLuongGiuCho = 0
+                SanPhamId = sp.Id,
+                Url = imageUrl.Trim(),
+                LaAnhDaiDien = true
             });
         }
-
-        var finalImg = string.IsNullOrWhiteSpace(imageUrl)
-            ? "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=600"
-            : imageUrl.Trim();
-
-        _context.SanPhamAnhs.Add(new SanPhamAnh
-        {
-            SanPhamId = sp.Id,
-            Url = finalImg,
-            LaAnhDaiDien = true
-        });
-
-        await _context.SaveChangesAsync();
-        var profitPerUnit = finalPrice - giaGoc;
-        TempData["ProductSuccess"] = $"Đã tạo \"{sp.TenSanPham}\" — Giá gốc: {giaGoc:N0} đ | Giá bán: {finalPrice:N0} đ (Lãi +{profitPerUnit:N0} đ/sp).";
-        return RedirectToAction(nameof(Products));
     }
 
-    [Authorize(Roles = "Admin")]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> EditProduct(
-        int id,
-        string tenSanPham,
-        int danhMucId,
-        decimal giaGoc,
-        decimal tyLeLoiNhuan,
-        decimal? giaBan,
-        string? imageUrl,
-        string? moTa)
+    await _context.SaveChangesAsync();
+    var profitPerUnit = Math.Max(0m, finalPrice - giaGoc);
+    TempData["ProductSuccess"] = $"Đã cập nhật \"{sp.TenSanPham}\" — Giá bán mới: {finalPrice:N0} đ (Lãi {effectiveMargin:0.#}%, +{profitPerUnit:N0} đ/sp).";
+    return RedirectToAction(nameof(Products));
+}
+
+[Authorize(Roles = "Admin")]
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> ApplyProfitSuggestion(int id, decimal newMarginPercent)
+{
+    var sp = await _context.SanPhams
+        .Include(s => s.BienTheSanPhams)
+        .FirstOrDefaultAsync(s => s.Id == id);
+
+    if (sp == null) return RedirectToAction(nameof(Products));
+
+    var cost = sp.GiaGoc > 0 ? sp.GiaGoc : sp.GiaBan;
+    var safeMargin = Math.Max(0m, newMarginPercent);
+    var newPrice = Math.Max(cost, Math.Round(cost * (1m + safeMargin / 100m) / 1000m) * 1000m);
+
+    sp.GiaGoc = cost;
+    sp.GiaBan = newPrice;
+    sp.ThoiGianCapNhat = DateTime.Now;
+    foreach (var bt in sp.BienTheSanPhams)
     {
-        var sp = await _context.SanPhams
-            .Include(s => s.SanPhamAnhs)
-            .Include(s => s.BienTheSanPhams)
-            .FirstOrDefaultAsync(s => s.Id == id);
-
-        if (sp == null || string.IsNullOrWhiteSpace(tenSanPham) || giaGoc <= 0)
-        {
-            TempData["ProductError"] = "Thông tin cập nhật sản phẩm không hợp lệ.";
-            return RedirectToAction(nameof(Products));
-        }
-
-        var computedPrice = Math.Round(giaGoc * (1 + Math.Max(0, tyLeLoiNhuan) / 100m) / 1000m) * 1000m;
-        var finalPrice = (giaBan.HasValue && giaBan.Value > 0) ? giaBan.Value : computedPrice;
-
-        sp.TenSanPham = tenSanPham.Trim();
-        sp.DanhMucId = danhMucId;
-        sp.GiaGoc = giaGoc;
-        sp.GiaBan = finalPrice;
-        sp.MoTa = moTa?.Trim();
-        sp.ThoiGianCapNhat = DateTime.Now;
-
-        foreach (var bt in sp.BienTheSanPhams)
-        {
-            bt.GiaBan = finalPrice;
-        }
-
-        if (!string.IsNullOrWhiteSpace(imageUrl))
-        {
-            var mainImg = sp.SanPhamAnhs.OrderByDescending(a => a.LaAnhDaiDien).FirstOrDefault();
-            if (mainImg != null)
-            {
-                mainImg.Url = imageUrl.Trim();
-            }
-            else
-            {
-                _context.SanPhamAnhs.Add(new SanPhamAnh
-                {
-                    SanPhamId = sp.Id,
-                    Url = imageUrl.Trim(),
-                    LaAnhDaiDien = true
-                });
-            }
-        }
-
-        await _context.SaveChangesAsync();
-        TempData["ProductSuccess"] = $"Đã cập nhật \"{sp.TenSanPham}\" — Giá bán mới: {finalPrice:N0} đ (Lãi +{(finalPrice - giaGoc):N0} đ/sp).";
-        return RedirectToAction(nameof(Products));
+        bt.GiaBan = newPrice;
     }
 
-    [Authorize(Roles = "Admin")]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ApplyProfitSuggestion(int id, decimal newMarginPercent)
-    {
-        var sp = await _context.SanPhams
-            .Include(s => s.BienTheSanPhams)
-            .FirstOrDefaultAsync(s => s.Id == id);
-
-        if (sp == null) return RedirectToAction(nameof(Products));
-
-        var cost = sp.GiaGoc > 0 ? sp.GiaGoc : sp.GiaBan;
-        var newPrice = Math.Round(cost * (1 + Math.Max(0, newMarginPercent) / 100m) / 1000m) * 1000m;
-
-        sp.GiaGoc = cost;
-        sp.GiaBan = newPrice;
-        sp.ThoiGianCapNhat = DateTime.Now;
-        foreach (var bt in sp.BienTheSanPhams)
-        {
-            bt.GiaBan = newPrice;
-        }
-
-        await _context.SaveChangesAsync();
-        TempData["ProductSuccess"] = $"Đã điều chỉnh lợi nhuận \"{sp.TenSanPham}\" thành {newMarginPercent:0.#}% → Giá bán mới: {newPrice:N0} đ.";
-        return RedirectToAction(nameof(Products));
-    }
-
+    await _context.SaveChangesAsync();
+    TempData["ProductSuccess"] = $"Đã điều chỉnh lợi nhuận \"{sp.TenSanPham}\" thành {safeMargin:0.#}% → Giá bán mới: {newPrice:N0} đ.";
+    return RedirectToAction(nameof(Products));
+}
     [Authorize(Roles = "Admin")]
     [HttpPost]
     [ValidateAntiForgeryToken]
@@ -1313,375 +1305,270 @@ public class ManagementController : Controller
     }
 
     // =========================================================================
-    // 5. QUẢN LÝ NGƯỜI DÙNG
+    // 5. NGƯỜI DÙNG (THEO origin/main ĐỂ KHỚP VIEW Users.cshtml)
     // =========================================================================
 
     [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Users(string? search, string? role)
+    public async Task<IActionResult> Users()
     {
-        ViewBag.Search = search;
-        ViewBag.SelectedRole = role;
-
-        var query = _context.NguoiDungs
+        var users = await _context.NguoiDungs
             .Include(u => u.VaiTros)
-            .AsQueryable();
-
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var kw = search.Trim();
-            query = query.Where(u => u.HoTen.Contains(kw) || u.Email.Contains(kw) || (u.SoDienThoai != null && u.SoDienThoai.Contains(kw)));
-        }
-
-        if (!string.IsNullOrWhiteSpace(role))
-        {
-            query = query.Where(u => u.VaiTros.Any(v => v.MaVaiTro == role));
-        }
-
-        var users = await query
-            .OrderByDescending(u => u.ThoiGianTao)
+            .OrderByDescending(u => u.Id)
             .ToListAsync();
-
-        var items = users.Select(u => new PersonViewModel
-        {
-            Id = (int)u.Id,
-            Name = u.HoTen,
-            Email = u.Email,
-            Phone = u.SoDienThoai ?? "Chưa cập nhật",
-            Role = u.VaiTros.Select(v => v.TenVaiTro).FirstOrDefault() ?? "Khách hàng",
-            Status = u.TrangThai == "Hoat_dong" ? "Hoạt động" : "Tạm khóa"
-        }).ToList();
-
-        return View(items);
+        return View(users);
     }
 
     [Authorize(Roles = "Admin")]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> UpdateUserStatus(long id, string status)
+    public async Task<IActionResult> UpdateUserStatus(long id, string trangThai)
     {
         var user = await _context.NguoiDungs.FindAsync(id);
-        if (user != null)
+        if (user != null && (trangThai == "Hoat_dong" || trangThai == "Khoa"))
         {
-            user.TrangThai = status == "Khoa" ? "Khoa" : "Hoat_dong";
+            user.TrangThai = trangThai;
             user.ThoiGianCapNhat = DateTime.Now;
             await _context.SaveChangesAsync();
-            TempData["UserSuccess"] = "Đã cập nhật trạng thái tài khoản.";
         }
         return RedirectToAction(nameof(Users));
     }
 
     // =========================================================================
-    // 6. QUẢN LÝ NHÂN VIÊN
+    // 6. NHÂN VIÊN (THEO origin/main ĐỂ KHỚP VIEW Employees.cshtml)
     // =========================================================================
 
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Employees()
     {
-        var nvs = await _context.NhanViens
-            .Include(nv => nv.NguoiDung)
-            .OrderByDescending(nv => nv.Id)
+        var list = await _context.NhanViens
+            .Include(e => e.NguoiDung)
+            .OrderByDescending(e => e.Id)
             .ToListAsync();
-
-        ViewBag.TotalEmployees = nvs.Count;
-        ViewBag.WorkingCount = nvs.Count(n => n.TrangThai == "Dang_lam");
-        ViewBag.LeaveCount = nvs.Count(n => n.TrangThai == "Tam_nghi");
-        ViewBag.ManagerCount = nvs.Count(n => n.ChucVu.Contains("Quản lý") || n.ChucVu.Contains("Quản trị"));
-
-        var items = nvs.Select(nv => new PersonViewModel
-        {
-            Id = (int)nv.Id,
-            Name = nv.NguoiDung.HoTen,
-            Email = nv.NguoiDung.Email,
-            Phone = nv.NguoiDung.SoDienThoai ?? "",
-            Role = $"{nv.ChucVu} ({nv.MaNhanVien})",
-            Status = nv.TrangThai switch
-            {
-                "Dang_lam" => "Hoạt động",
-                "Tam_nghi" => "Nghỉ phép",
-                _ => "Tạm khóa"
-            }
-        }).ToList();
-
-        return View(items);
+        return View(list);
     }
 
     [Authorize(Roles = "Admin")]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreateEmployee(string hoTen, string email, string phone, string password, string chucVu, decimal luong)
+    public async Task<IActionResult> AddEmployee(string hoTen, string email, string? soDienThoai, string chucVu, decimal luong)
     {
-        var emailChuan = (email ?? "").Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(hoTen) || string.IsNullOrWhiteSpace(emailChuan) || string.IsNullOrWhiteSpace(password))
+        var cleanEmail = email.Trim();
+        var user = await _context.NguoiDungs.FirstOrDefaultAsync(u => u.Email == cleanEmail);
+        if (user == null)
         {
-            TempData["EmployeeError"] = "Vui lòng nhập đầy đủ họ tên, email và mật khẩu.";
-            return RedirectToAction(nameof(Employees));
-        }
-
-        if (await _context.NguoiDungs.AnyAsync(u => u.EmailChuan == emailChuan))
-        {
-            TempData["EmployeeError"] = "Email này đã tồn tại trong hệ thống.";
-            return RedirectToAction(nameof(Employees));
-        }
-
-        var user = new NguoiDung
-        {
-            Email = email!.Trim(),
-            HoTen = hoTen.Trim(),
-            SoDienThoai = phone?.Trim(),
-            MatKhauHash = BCrypt.Net.BCrypt.HashPassword(password),
-            TrangThai = "Hoat_dong",
-            ThoiGianTao = DateTime.Now,
-            ThoiGianCapNhat = DateTime.Now
-        };
-
-        var roleNv = await _context.VaiTros.FirstOrDefaultAsync(v => v.MaVaiTro == "NHAN_VIEN");
-        if (roleNv != null) user.VaiTros.Add(roleNv);
-
-        _context.NguoiDungs.Add(user);
-        await _context.SaveChangesAsync();
-
-        _context.NhanViens.Add(new NhanVien
-        {
-            NguoiDungId = user.Id,
-            MaNhanVien = "NV-" + DateTime.Now.ToString("yyMMddHHmm"),
-            ChucVu = string.IsNullOrWhiteSpace(chucVu) ? "Nhân viên bán hàng" : chucVu.Trim(),
-            NgayVaoLam = DateOnly.FromDateTime(DateTime.Today),
-            Luong = Math.Max(0, luong),
-            TrangThai = "Dang_lam"
-        });
-        await _context.SaveChangesAsync();
-
-        TempData["EmployeeSuccess"] = "Đã thêm nhân viên mới thành công.";
-        return RedirectToAction(nameof(Employees));
-    }
-
-    [Authorize(Roles = "Admin")]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> UpdateEmployeeStatus(long id, string status)
-    {
-        var nv = await _context.NhanViens.Include(x => x.NguoiDung).FirstOrDefaultAsync(x => x.Id == id);
-        if (nv != null)
-        {
-            nv.TrangThai = status;
-            nv.NguoiDung.TrangThai = status == "Da_nghi" ? "Khoa" : "Hoat_dong";
-            await _context.SaveChangesAsync();
-            TempData["EmployeeSuccess"] = "Đã cập nhật trạng thái nhân viên.";
-        }
-        return RedirectToAction(nameof(Employees));
-    }
-
-    // =========================================================================
-    // 7. QUẢN LÝ KHUYẾN MÃI (VOUCHER)
-    // =========================================================================
-
-    [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Promotions(string? prefillCode = null, int? prefillDiscount = null, string? prefillName = null)
-    {
-        var now = DateTime.Now;
-        var vouchers = await _context.MaGiamGia
-            .OrderByDescending(v => v.Id)
-            .ToListAsync();
-
-        ViewBag.PrefillCode = prefillCode;
-        ViewBag.PrefillDiscount = prefillDiscount;
-        ViewBag.PrefillName = prefillName;
-        ViewBag.ActiveCount = vouchers.Count(v => v.TrangThai && v.NgayBatDau <= now && v.NgayKetThuc >= now);
-        ViewBag.UsedCount = vouchers.Sum(v => v.SoLuongDaDung);
-        ViewBag.EndingSoonCount = vouchers.Count(v => v.TrangThai && v.NgayKetThuc >= now && v.NgayKetThuc <= now.AddDays(7));
-
-        var items = vouchers.Select(v =>
-        {
-            var discountText = v.LoaiGiam == "Phan_tram"
-                ? $"GIẢM {v.GiaTri:0}%"
-                : $"GIẢM {v.GiaTri:N0}đ";
-
-            var statusText = !v.TrangThai
-                ? "Tạm dừng"
-                : (v.NgayKetThuc < now ? "Đã hết hạn" : (v.NgayBatDau > now ? "Sắp diễn ra" : "Đang chạy"));
-
-            return new PromotionViewModel
+            var roleNv = await _context.VaiTros.FirstOrDefaultAsync(r => r.MaVaiTro == "NHAN_VIEN");
+            user = new NguoiDung
             {
-                Id = v.Id,
-                Name = string.IsNullOrWhiteSpace(v.MoTa) ? $"Mã ưu đãi {v.MaVoucher}" : v.MoTa,
-                Code = v.MaVoucher,
-                Discount = discountText,
-                Period = $"{v.NgayBatDau:dd/MM/yyyy} - {v.NgayKetThuc:dd/MM/yyyy} (Đã dùng {v.SoLuongDaDung}/{v.SoLuongPhatHanh})",
-                Status = statusText
+                TenDangNhap = cleanEmail,
+                Email = cleanEmail,
+                EmailChuan = cleanEmail.ToUpperInvariant(),
+                MatKhauHash = "Nhanvien123@",
+                HoTen = hoTen.Trim(),
+                SoDienThoai = soDienThoai?.Trim(),
+                TrangThai = "Hoat_dong",
+                DaXacThucEmail = true,
+                ThoiGianTao = DateTime.Now,
+                ThoiGianCapNhat = DateTime.Now
             };
-        }).ToList();
+            if (roleNv != null) user.VaiTros.Add(roleNv);
+            _context.NguoiDungs.Add(user);
+            await _context.SaveChangesAsync();
+        }
 
-        return View(items);
+        var hasEmp = await _context.NhanViens.AnyAsync(e => e.NguoiDungId == user.Id);
+        if (!hasEmp)
+        {
+            _context.NhanViens.Add(new NhanVien
+            {
+                NguoiDungId = user.Id,
+                MaNhanVien = "NV" + DateTime.Now.ToString("mmss"),
+                ChucVu = chucVu.Trim(),
+                NgayVaoLam = DateOnly.FromDateTime(DateTime.Now),
+                Luong = Math.Max(0, luong),
+                TrangThai = "Dang_lam"
+            });
+            await _context.SaveChangesAsync();
+        }
+        return RedirectToAction(nameof(Employees));
     }
 
     [Authorize(Roles = "Admin")]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreatePromotion(
-        string maVoucher,
-        string? moTa,
-        string loaiGiam,
-        decimal giaTri,
-        decimal donToiThieu,
-        int soLuongPhatHanh,
-        DateTime ngayBatDau,
-        DateTime ngayKetThuc)
+    public async Task<IActionResult> UpdateEmployeeStatus(long id, string trangThai)
     {
-        var code = (maVoucher ?? "").Trim().ToUpperInvariant();
-        if (string.IsNullOrWhiteSpace(code) || giaTri <= 0 || soLuongPhatHanh <= 0 || ngayKetThuc <= ngayBatDau)
+        var emp = await _context.NhanViens.FindAsync(id);
+        if (emp != null && (trangThai == "Dang_lam" || trangThai == "Tam_nghi" || trangThai == "Da_nghi"))
         {
-            TempData["PromoError"] = "Thông tin mã khuyến mãi không hợp lệ (kiểm tra mã, giá trị và ngày kết thúc phải sau ngày bắt đầu).";
-            return RedirectToAction(nameof(Promotions));
+            emp.TrangThai = trangThai;
+            await _context.SaveChangesAsync();
         }
+        return RedirectToAction(nameof(Employees));
+    }
 
-        if (await _context.MaGiamGia.AnyAsync(v => v.MaVoucher == code))
-        {
-            TempData["PromoError"] = "Mã voucher này đã tồn tại.";
-            return RedirectToAction(nameof(Promotions));
-        }
+    // =========================================================================
+    // 7. KHUYẾN MÃI (THEO origin/main ĐỂ KHỚP VIEW Promotions.cshtml)
+    // =========================================================================
 
-        _context.MaGiamGia.Add(new MaGiamGium
-        {
-            MaVoucher = code,
-            MoTa = moTa?.Trim(),
-            LoaiGiam = loaiGiam == "Tien_mat" ? "Tien_mat" : "Phan_tram",
-            GiaTri = giaTri,
-            DonToiThieu = Math.Max(0, donToiThieu),
-            SoLuongPhatHanh = soLuongPhatHanh,
-            SoLuongDaDung = 0,
-            NgayBatDau = ngayBatDau,
-            NgayKetThuc = ngayKetThuc,
-            TrangThai = true
-        });
-        await _context.SaveChangesAsync();
-
-        TempData["PromoSuccess"] = $"Đã tạo mã khuyến mãi {code} thành công.";
-        return RedirectToAction(nameof(Promotions));
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Promotions()
+    {
+        var promos = await _context.MaGiamGia
+            .OrderByDescending(m => m.Id)
+            .ToListAsync();
+        return View(promos);
     }
 
     [Authorize(Roles = "Admin")]
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> TogglePromotion(int id)
+    public async Task<IActionResult> AddPromotion(string maVoucher, string moTa, string loaiGiam, decimal giaTri, int soLuongPhatHanh)
     {
-        var voucher = await _context.MaGiamGia.FindAsync(id);
-        if (voucher != null)
+        var code = maVoucher.Trim().ToUpperInvariant();
+        if (!string.IsNullOrWhiteSpace(code) && !await _context.MaGiamGia.AnyAsync(m => m.MaVoucher == code))
         {
-            voucher.TrangThai = !voucher.TrangThai;
+            _context.MaGiamGia.Add(new MaGiamGium
+            {
+                MaVoucher = code,
+                MoTa = moTa.Trim(),
+                LoaiGiam = loaiGiam == "Tien_mat" ? "Tien_mat" : "Phan_tram",
+                GiaTri = loaiGiam == "Phan_tram" ? Math.Clamp(giaTri, 1, 100) : Math.Max(1000, giaTri),
+                DonToiThieu = 0,
+                SoLuongPhatHanh = Math.Max(1, soLuongPhatHanh),
+                SoLuongDaDung = 0,
+                NgayBatDau = DateTime.Now,
+                NgayKetThuc = DateTime.Now.AddDays(30),
+                TrangThai = true
+            });
             await _context.SaveChangesAsync();
         }
         return RedirectToAction(nameof(Promotions));
     }
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> EditPromotion(
+    long id,
+    string maVoucher,
+    string moTa,
+    string loaiGiam,
+    decimal giaTri,
+    decimal donToiThieu,
+    int soLuongPhatHanh,
+    DateTime ngayBatDau,
+    DateTime ngayKetThuc,
+    bool trangThai = false)
+{
+    var promo = await _context.MaGiamGia.FirstOrDefaultAsync(x => x.Id == id);
+    if (promo == null)
+    {
+        TempData["PromoError"] = "Không tìm thấy mã khuyến mãi cần sửa.";
+        return RedirectToAction(nameof(Promotions));
+    }
 
+    var codeClean = (maVoucher ?? "").Trim().ToUpperInvariant();
+    if (string.IsNullOrWhiteSpace(codeClean))
+    {
+        TempData["PromoError"] = "Mã voucher không được để trống.";
+        return RedirectToAction(nameof(Promotions));
+    }
+
+    var duplicate = await _context.MaGiamGia.AnyAsync(x => x.Id != id && x.MaVoucher == codeClean);
+    if (duplicate)
+    {
+        TempData["PromoError"] = $"Mã voucher '{codeClean}' đã tồn tại.";
+        return RedirectToAction(nameof(Promotions));
+    }
+
+    if (ngayKetThuc < ngayBatDau)
+    {
+        TempData["PromoError"] = "Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu.";
+        return RedirectToAction(nameof(Promotions));
+    }
+
+    promo.MaVoucher = codeClean;
+    promo.MoTa = (moTa ?? "").Trim();
+    promo.LoaiGiam = loaiGiam == "Tien_mat" ? "Tien_mat" : "Phan_tram";
+    promo.GiaTri = giaTri;
+    promo.DonToiThieu = Math.Max(0, donToiThieu);
+    promo.SoLuongPhatHanh = Math.Max(promo.SoLuongDaDung, soLuongPhatHanh);
+    promo.NgayBatDau = ngayBatDau;
+    promo.NgayKetThuc = ngayKetThuc;
+    promo.TrangThai = trangThai;
+
+    await _context.SaveChangesAsync();
+    TempData["PromoSuccess"] = $"Đã cập nhật mã khuyến mãi {promo.MaVoucher}.";
+    return RedirectToAction(nameof(Promotions));
+}
     // =========================================================================
-    // 8. QUẢN LÝ ĐÁNH GIÁ SẢN PHẨM
+    // 8. ĐÁNH GIÁ SẢN PHẨM (THEO origin/main ĐỂ KHỚP VIEW Reviews.cshtml)
     // =========================================================================
 
     public async Task<IActionResult> Reviews()
     {
-        var list = await _context.DanhGia
-            .Include(dg => dg.NguoiDung)
-            .Include(dg => dg.SanPham)
-            .OrderByDescending(dg => dg.ThoiGianTao)
+        var reviews = await _context.DanhGia
+            .Include(r => r.SanPham)
+            .Include(r => r.NguoiDung)
+            .OrderByDescending(r => r.ThoiGianTao)
             .ToListAsync();
-
-        ViewBag.TotalReviews = list.Count;
-        ViewBag.PendingReviews = list.Count(r => r.TrangThai == "Cho_duyet");
-        ViewBag.AvgRating = list.Count > 0 ? list.Average(r => (double)r.SoSao) : 5.0;
-        ViewBag.PositiveRate = list.Count > 0 ? (int)Math.Round(list.Count(r => r.SoSao >= 4) * 100.0 / list.Count) : 100;
-
-        var items = list.Select(dg => new ReviewViewModel
-        {
-            Id = (int)dg.Id,
-            Customer = dg.NguoiDung.HoTen,
-            Product = dg.SanPham.TenSanPham,
-            Rating = dg.SoSao,
-            Comment = string.IsNullOrWhiteSpace(dg.PhanHoiShop)
-                ? (dg.NoiDung ?? "")
-                : $"{dg.NoiDung} — [Shop phản hồi: {dg.PhanHoiShop}]",
-            Date = dg.ThoiGianTao.ToString("dd/MM/yyyy"),
-            Status = dg.TrangThai switch
-            {
-                "Da_duyet" => "Đã duyệt",
-                "An" => "Đã ẩn",
-                _ => "Chờ duyệt"
-            }
-        }).ToList();
-
-        return View(items);
+        return View(reviews);
     }
 
     [HttpPost]
     [ValidateAntiForgeryToken]
-    public async Task<IActionResult> UpdateReview(long id, string actionType, string? replyText)
+    public async Task<IActionResult> UpdateReviewStatus(long id, string trangThai)
     {
-        var dg = await _context.DanhGia.FindAsync(id);
-        if (dg != null)
+        var rv = await _context.DanhGia.FindAsync(id);
+        if (rv != null && (trangThai == "Cho_duyet" || trangThai == "Da_duyet" || trangThai == "An"))
         {
-            if (actionType == "approve")
-            {
-                dg.TrangThai = "Da_duyet";
-            }
-            else if (actionType == "hide")
-            {
-                dg.TrangThai = "An";
-            }
-            else if (actionType == "reply" && !string.IsNullOrWhiteSpace(replyText))
-            {
-                dg.PhanHoiShop = replyText.Trim();
-                dg.ThoiGianPhanHoi = DateTime.Now;
-                dg.TrangThai = "Da_duyet";
-            }
-
+            rv.TrangThai = trangThai;
             await _context.SaveChangesAsync();
-            TempData["ReviewSuccess"] = "Đã cập nhật đánh giá thành công.";
         }
         return RedirectToAction(nameof(Reviews));
     }
 
     // =========================================================================
-    // 9. BÁO CÁO & THỐNG KÊ DOANH THU + XUẤT & LƯU TRỮ FILE PDF
+    // 9. BÁO CÁO & THỐNG KÊ DOANH THU + XUẤT PDF (PHẦN CỦA BẠN)
     // =========================================================================
 
-   [Authorize(Roles = "Admin")]
-public async Task<IActionResult> Reports(int? year, int? month)
-{
-    var currentYear = DateTime.Today.Year;
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Reports(int? year, int? month)
+    {
+        var currentYear = DateTime.Today.Year;
 
-    var minOrderYear = await _context.DonHangs
-        .Select(d => (int?)d.ThoiGianTao.Year)
-        .MinAsync();
+        var minOrderYear = await _context.DonHangs
+            .Select(d => (int?)d.ThoiGianTao.Year)
+            .MinAsync();
 
-    var minUserYear = await _context.NguoiDungs
-        .Select(u => (int?)u.ThoiGianTao.Year)
-        .MinAsync();
+        var minUserYear = await _context.NguoiDungs
+            .Select(u => (int?)u.ThoiGianTao.Year)
+            .MinAsync();
 
-    var candidateYears = new[] { minOrderYear, minUserYear }
-        .Where(y => y.HasValue && y.Value > 2000 && y.Value <= currentYear)
-        .Select(y => y!.Value)
-        .ToList();
+        var candidateYears = new[] { minOrderYear, minUserYear }
+            .Where(y => y.HasValue && y.Value > 2000 && y.Value <= currentYear)
+            .Select(y => y!.Value)
+            .ToList();
 
-    var startYear = candidateYears.Count > 0 ? candidateYears.Min() : currentYear;
+        var startYear = candidateYears.Count > 0 ? candidateYears.Min() : currentYear;
 
-    var selectedYear = (year.HasValue && year.Value >= startYear && year.Value <= currentYear)
-        ? year.Value
-        : currentYear;
+        var selectedYear = (year.HasValue && year.Value >= startYear && year.Value <= currentYear)
+            ? year.Value
+            : currentYear;
 
-    var selectedMonth = (month is >= 1 and <= 12)
-        ? month.Value
-        : (selectedYear == currentYear ? DateTime.Today.Month : 1);
+        var selectedMonth = (month is >= 1 and <= 12)
+            ? month.Value
+            : (selectedYear == currentYear ? DateTime.Today.Month : 1);
 
-    var data = await BuildReportSnapshotAsync(selectedYear, selectedMonth);
+        var data = await BuildReportSnapshotAsync(selectedYear, selectedMonth);
 
-    ViewBag.StartYear = startYear;
-    ViewBag.CurrentYear = currentYear;
-    ViewBag.SelectedYear = selectedYear;
-    ViewBag.SelectedMonth = selectedMonth;
-    ViewBag.ReportData = data;
-    ViewBag.SavedReports = GetSavedReportFiles();
+        ViewBag.StartYear = startYear;
+        ViewBag.CurrentYear = currentYear;
+        ViewBag.SelectedYear = selectedYear;
+        ViewBag.SelectedMonth = selectedMonth;
+        ViewBag.ReportData = data;
+        ViewBag.SavedReports = GetSavedReportFiles();
 
-    return View();
-}
+        return View();
+    }
 
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> ReportDocument(int? year, int? month)
@@ -2010,183 +1897,59 @@ public async Task<IActionResult> Reports(int? year, int? month)
     }
 
     // =========================================================================
-    // 9B. QUẢN LÝ & ĐỐI SOÁT THANH TOÁN CHUYỂN KHOẢN
+    // 10. QUẢN LÝ KHU VỰC GIAO HÀNG - TỈNH / THÀNH PHỐ (PHẦN TỰ PHÁT TRIỂN)
     // =========================================================================
 
-    [HttpGet]
-    public async Task<IActionResult> Payments(string? search, string? payStatus)
+    
+    public async Task<IActionResult> Payments(string? search, string? status)
+{
+    var query = _context.DonHangs
+        .Where(o => o.PhuongThucThanhToan == "Chuyen_khoan"
+                 || o.PhuongThucThanhToan == "ChuyenKhoan"
+                 || o.PhuongThucThanhToan == "Bank")
+        .OrderByDescending(o => o.ThoiGianTao)
+        .AsQueryable();
+
+    if (!string.IsNullOrWhiteSpace(search))
     {
-        var allTransfer = await _context.DonHangs
-            .AsNoTracking()
-            .Where(o => o.PhuongThucThanhToan != null && o.PhuongThucThanhToan != "COD")
-            .OrderByDescending(o => o.ThoiGianTao)
-            .ToListAsync();
-
-        ViewBag.UnpaidCount = allTransfer.Count(o =>
-            !string.Equals((o.TrangThaiThanhToan ?? "").Trim(), "Da_thanh_toan", StringComparison.OrdinalIgnoreCase));
-        ViewBag.PaidCount = allTransfer.Count(o =>
-            string.Equals((o.TrangThaiThanhToan ?? "").Trim(), "Da_thanh_toan", StringComparison.OrdinalIgnoreCase));
-        ViewBag.PaidAmount = allTransfer
-            .Where(o => string.Equals((o.TrangThaiThanhToan ?? "").Trim(), "Da_thanh_toan", StringComparison.OrdinalIgnoreCase))
-            .Sum(o => o.TongThanhToan);
-
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            var s = search.Trim().ToLowerInvariant();
-            allTransfer = allTransfer.Where(o =>
-                (o.MaDonHang ?? "").ToLowerInvariant().Contains(s) ||
-                (o.TenNguoiNhan ?? "").ToLowerInvariant().Contains(s) ||
-                (o.DienThoaiNhan ?? "").ToLowerInvariant().Contains(s)
-            ).ToList();
-        }
-
-        if (!string.IsNullOrWhiteSpace(payStatus))
-        {
-            var target = payStatus.Trim();
-            allTransfer = allTransfer.Where(o =>
-                string.Equals((o.TrangThaiThanhToan ?? "Chua_thanh_toan").Trim(), target, StringComparison.OrdinalIgnoreCase)
-            ).ToList();
-        }
-
-        ViewBag.Search = search;
-        ViewBag.PayStatus = payStatus;
-        return View(allTransfer);
+        var kw = search.Trim().ToLower();
+        query = query.Where(o =>
+            (o.MaDonHang != null && o.MaDonHang.ToLower().Contains(kw)) ||
+            (o.TenNguoiNhan != null && o.TenNguoiNhan.ToLower().Contains(kw)) ||
+            (o.DienThoaiNhan != null && o.DienThoaiNhan.Contains(kw)));
     }
 
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ConfirmPayment(long id)
+    if (!string.IsNullOrWhiteSpace(status))
     {
-        var order = await _context.DonHangs.FirstOrDefaultAsync(o => o.Id == id);
-        if (order == null)
-        {
-            TempData["PayError"] = "Không tìm thấy đơn hàng.";
-            return RedirectToAction(nameof(Payments));
-        }
+        var st = status.Trim();
+        query = query.Where(o => o.TrangThaiThanhToan == st);
+    }
 
-        order.TrangThaiThanhToan = "Da_thanh_toan";
-        await _context.SaveChangesAsync();
+    ViewBag.Search = search;
+    ViewBag.Status = status;
 
-        TempData["PaySuccess"] = $"Đã xác nhận thanh toán chuyển khoản cho đơn {order.MaDonHang}.";
+    var orders = await query.ToListAsync();
+    return View(orders);
+}
+
+[HttpPost]
+[ValidateAntiForgeryToken]
+public async Task<IActionResult> ConfirmPayment(long id)
+{
+    var order = await _context.DonHangs.FirstOrDefaultAsync(o => o.Id == id);
+    if (order == null)
+    {
+        TempData["OrderError"] = "Không tìm thấy đơn hàng.";
         return RedirectToAction(nameof(Payments));
     }
 
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ResetPaymentStatus(long id)
-    {
-        var order = await _context.DonHangs.FirstOrDefaultAsync(o => o.Id == id);
-        if (order == null)
-        {
-            TempData["PayError"] = "Không tìm thấy đơn hàng.";
-            return RedirectToAction(nameof(Payments));
-        }
+    order.TrangThaiThanhToan = "Da_thanh_toan";
+    order.ThoiGianCapNhat = DateTime.Now;
+    await _context.SaveChangesAsync();
 
-        order.TrangThaiThanhToan = "Chua_thanh_toan";
-        await _context.SaveChangesAsync();
-
-        TempData["PaySuccess"] = $"Đã chuyển đơn {order.MaDonHang} về trạng thái chờ xác nhận thanh toán.";
-        return RedirectToAction(nameof(Payments));
-    }
-
-    // =========================================================================
-    // 10. QUẢN LÝ KHU VỰC GIAO HÀNG (TỈNH / THÀNH PHỐ)
-    // =========================================================================
-
-    [Authorize(Roles = "Admin")]
-    public async Task<IActionResult> Provinces()
-    {
-        var items = await _context.TinhThanhs
-            .OrderByDescending(t => t.TrangThai)
-            .ThenBy(t => t.TenTinhThanh)
-            .ToListAsync();
-        return View(items);
-    }
-
-    [Authorize(Roles = "Admin")]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> CreateProvince(string tenTinhThanh)
-    {
-        if (string.IsNullOrWhiteSpace(tenTinhThanh))
-        {
-            TempData["ProvinceError"] = "Tên tỉnh / thành phố không được để trống.";
-            return RedirectToAction(nameof(Provinces));
-        }
-
-        var ten = tenTinhThanh.Trim();
-        if (await _context.TinhThanhs.AnyAsync(t => t.TenTinhThanh == ten))
-        {
-            TempData["ProvinceError"] = "Tỉnh / thành phố này đã tồn tại trong danh sách.";
-            return RedirectToAction(nameof(Provinces));
-        }
-
-        _context.TinhThanhs.Add(new TinhThanh
-        {
-            TenTinhThanh = ten,
-            TrangThai = true
-        });
-        await _context.SaveChangesAsync();
-
-        TempData["ProvinceSuccess"] = $"Đã thêm khu vực giao hàng: {ten}.";
-        return RedirectToAction(nameof(Provinces));
-    }
-
-    [Authorize(Roles = "Admin")]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> EditProvince(int id, string tenTinhThanh)
-    {
-        var item = await _context.TinhThanhs.FindAsync(id);
-        if (item == null || string.IsNullOrWhiteSpace(tenTinhThanh))
-        {
-            TempData["ProvinceError"] = "Tên tỉnh / thành phố không hợp lệ.";
-            return RedirectToAction(nameof(Provinces));
-        }
-
-        var ten = tenTinhThanh.Trim();
-        if (await _context.TinhThanhs.AnyAsync(t => t.TenTinhThanh == ten && t.Id != id))
-        {
-            TempData["ProvinceError"] = "Tỉnh / thành phố này đã tồn tại trong danh sách.";
-            return RedirectToAction(nameof(Provinces));
-        }
-
-        item.TenTinhThanh = ten;
-        await _context.SaveChangesAsync();
-
-        TempData["ProvinceSuccess"] = $"Đã cập nhật khu vực thành \"{ten}\".";
-        return RedirectToAction(nameof(Provinces));
-    }
-
-    [Authorize(Roles = "Admin")]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> ToggleProvince(int id)
-    {
-        var item = await _context.TinhThanhs.FindAsync(id);
-        if (item != null)
-        {
-            item.TrangThai = !item.TrangThai;
-            await _context.SaveChangesAsync();
-            TempData["ProvinceSuccess"] = $"Đã {(item.TrangThai ? "mở lại" : "tạm ngưng")} giao hàng tại {item.TenTinhThanh}.";
-        }
-        return RedirectToAction(nameof(Provinces));
-    }
-
-    [Authorize(Roles = "Admin")]
-    [HttpPost]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> DeleteProvince(int id)
-    {
-        var item = await _context.TinhThanhs.FindAsync(id);
-        if (item != null)
-        {
-            _context.TinhThanhs.Remove(item);
-            await _context.SaveChangesAsync();
-            TempData["ProvinceSuccess"] = $"Đã xóa khu vực \"{item.TenTinhThanh}\" khỏi danh sách.";
-        }
-        return RedirectToAction(nameof(Provinces));
-    }
+    TempData["OrderSuccess"] = $"Đã xác nhận thanh toán chuyển khoản cho đơn {order.MaDonHang}.";
+    return RedirectToAction(nameof(Payments));
+}
 }
 
 public class CategoryMetaInfo

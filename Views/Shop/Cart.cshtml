@@ -1,97 +1,91 @@
-@model List<CartItemViewModel>
+@model List<ProductViewModel>
 @{
-    Layout = null;
-    var tongTien = Model.Sum(x => x.SubTotal);
+    Layout = "_ShopLayout";
+    ViewData["Title"] = "Giỏ hàng";
 }
-<!DOCTYPE html>
-<html lang="vi">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Giỏ hàng - FashionHub</title>
-    <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="~/css/store.css" asp-append-version="true" />
-</head>
-<body>
-    <header class="store-header">
-        <a class="store-brand" href="/Shop"><span>F</span> FashionHub</a>
-        <form class="store-search" method="get" asp-action="Index" asp-controller="Shop">
-            <input name="search" placeholder="Tìm kiếm sản phẩm...">
-        </form>
-        <nav>
-            <a href="/Shop">@(User.Identity?.Name ?? "Tài khoản")</a>
-            <a class="cart-link">Giỏ hàng <b>@Model.Sum(x => x.Quantity)</b></a>
-        </nav>
+
+<main class="cart-page cart-v2 cart-v3">
+    <div class="commerce-back-link">
+        <a asp-controller="Shop" asp-action="Index"><span aria-hidden="true">←</span> Tiếp tục mua sắm</a>
+        <span class="cart-topline-tag"><i></i> ĐỔI TRẢ 7 NGÀY / FREESHIP TỪ 500K</span>
+    </div>
+
+    <header class="commerce-heading">
+        <div>
+            <p class="commerce-kicker">FASHIONHUB <span>/</span> YOUR PICKS</p>
+            <h1>Túi đồ <em>có gu.</em></h1>
+            <p class="commerce-intro">Bạn chọn món nào, câu chuyện phong cách bắt đầu từ đó.</p>
+        </div>
+        <div class="commerce-heading-mark" aria-hidden="true">
+            <span>01</span>
+            <small>YOUR<br />STYLE<br />FILE</small>
+        </div>
     </header>
 
-    <main class="cart-page">
-        <div class="page-heading">
-            <div><span class="eyebrow">ĐƠN HÀNG CỦA BẠN</span><h1>Giỏ hàng</h1></div>
-        </div>
+    <nav class="commerce-progress" aria-label="Tiến trình mua hàng">
+        <div class="commerce-step commerce-step-active"><span>01</span><strong>Giỏ hàng</strong></div>
+        <i></i>
+        <div class="commerce-step"><span>02</span><strong>Giao hàng</strong></div>
+        <i></i>
+        <div class="commerce-step"><span>03</span><strong>Hoàn tất</strong></div>
+    </nav>
 
-        @if (TempData["CartError"] != null)
-        {
-            <p style="color:#b91c1c;margin-bottom:16px">@TempData["CartError"]</p>
-        }
+    @if (TempData["CartError"] != null)
+    {
+        <div class="cart-notice" role="alert">@TempData["CartError"]</div>
+    }
 
-        @if (Model.Count == 0)
-        {
-            <div style="text-align:center;padding:48px 0">
-                <p>Giỏ hàng của bạn đang trống.</p>
-                <a class="checkout-button" style="display:inline-block;margin-top:12px" href="/Shop">← Tiếp tục mua sắm</a>
+    <div class="cart-layout cart-layout-v2">
+        <section class="cart-main-column">
+            <div class="cart-products-panel">
+                <header class="cart-panel-heading">
+                    <div>
+                        <span class="commerce-kicker">PICKED BY YOU / READY TO WEAR</span>
+                        <h2>Sản phẩm <span id="cartItemCount">0</span></h2>
+                    </div>
+                    <span class="cart-panel-note">Đã gồm thuế <b>·</b> Đổi trả 7 ngày</span>
+                </header>
+                <div class="cart-items" id="cartItemsContainer"></div>
+                <footer class="cart-assurance">
+                    <div><span class="assurance-icon">↗</span><span><strong>Giao hàng toàn quốc</strong><small>Đóng gói cẩn thận, theo dõi dễ dàng</small></span></div>
+                    <div><span class="assurance-icon">↺</span><span><strong>Đổi trả trong 7 ngày</strong><small>An tâm chọn đúng phong cách</small></span></div>
+                </footer>
             </div>
-        }
-        else
-        {
-            <div class="cart-layout">
-                <section class="cart-items">
-                    @foreach (var p in Model)
-                    {
-                        <article class="cart-item">
-                            <img src="@p.Image" alt="@p.Name">
-                            <div class="cart-item-info">
-                                <small>@p.Category</small>
-                                <h3><a href="/Shop/Detail/@p.ProductId">@p.Name</a></h3>
-                                <span>Kích thước: @p.Size &nbsp; Màu: @p.Color</span>
-                            </div>
+        </section>
 
-                            <div class="quantity">
-                                <form method="post" asp-action="UpdateCart" asp-controller="Shop" style="display:inline">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="cartItemId" value="@p.CartItemId" />
-                                    <input type="hidden" name="delta" value="-1" />
-                                    <button type="submit">−</button>
-                                </form>
-                                <strong>@p.Quantity</strong>
-                                <form method="post" asp-action="UpdateCart" asp-controller="Shop" style="display:inline">
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="cartItemId" value="@p.CartItemId" />
-                                    <input type="hidden" name="delta" value="1" />
-                                    <button type="submit">＋</button>
-                                </form>
-                            </div>
-
-                            <strong>@p.SubTotal.ToString("N0") đ</strong>
-
-                            <form method="post" asp-action="RemoveCart" asp-controller="Shop" style="display:inline">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="cartItemId" value="@p.CartItemId" />
-                                <button type="submit" class="remove">×</button>
-                            </form>
-                        </article>
-                    }
-                </section>
-
-                <aside class="order-summary">
-                    <h2>Tóm tắt đơn hàng</h2>
-                    <div><span>Tạm tính</span><strong>@tongTien.ToString("N0") đ</strong></div>
-                    <div><span>Phí vận chuyển</span><strong>Miễn phí</strong></div>
-                    <div class="total"><span>Tổng cộng</span><strong>@tongTien.ToString("N0") đ</strong></div>
-                    <a class="checkout-button" href="/Shop/Checkout">Tiến hành thanh toán</a>
-                    <a class="continue-shopping" href="/Shop">← Tiếp tục mua sắm</a>
-                </aside>
+        <aside class="order-summary cart-summary-v2">
+            <div class="summary-overline"><span>YOUR ORDER</span><span class="summary-lock">● BẢO MẬT</span></div>
+            <h2>Tóm tắt đơn hàng</h2>
+            <div class="summary-items-count"><span id="summaryItemCount">0 sản phẩm</span><span>VND</span></div>
+            <div class="summary-calculation">
+                <div><span>Tạm tính</span><strong id="cartSubtotal">0 đ</strong></div>
+                <div><span>Vận chuyển</span><strong class="shipping-free">Miễn phí</strong></div>
             </div>
-        }
-    </main>
-</body>
-</html>
+
+            <div class="coupon coupon-v2">
+                <label for="cartCoupon">Mã ưu đãi</label>
+                <div class="coupon-control">
+                    <span aria-hidden="true">％</span>
+                    <input id="cartCoupon" placeholder="Nhập mã giảm giá" autocomplete="off" />
+                    <button type="button">Áp dụng</button>
+                </div>
+                <p class="coupon-message" aria-live="polite"></p>
+            </div>
+
+            <div class="summary-grand-total">
+                <span>Tổng thanh toán</span>
+                <strong id="cartTotal">0 đ</strong>
+                <small>Đã bao gồm thuế VAT</small>
+            </div>
+
+            <a class="checkout-button cart-checkout-cta" asp-controller="Shop" asp-action="Checkout">
+                <span>Tiến hành thanh toán</span><b aria-hidden="true">→</b>
+            </a>
+            <p class="summary-safe-note"><span aria-hidden="true">✓</span> Thông tin của bạn được bảo mật an toàn</p>
+        </aside>
+    </div>
+</main>
+
+@section Scripts {
+    <script src="~/js/site.js" asp-append-version="true"></script>
+}

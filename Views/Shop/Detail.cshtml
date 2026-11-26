@@ -1,573 +1,154 @@
-@model ShopProject.Models.ProductViewModel
+@model ProductViewModel
 @{
-    Layout = "_Layout";
+    Layout = "_ShopLayout";
     ViewData["Title"] = Model.Name;
-    ViewData["Title"] = Model.Name;
-    var images = ViewBag.Images as List<string> ?? new List<string> { Model.Image };
-    var variants = ViewBag.Variants as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
-    var reviews = ViewBag.Reviews as IEnumerable<dynamic> ?? Enumerable.Empty<dynamic>();
-    var related = ViewBag.Related as List<ShopProject.Models.ProductViewModel> ?? new List<ShopProject.Models.ProductViewModel>();
-    var description = ViewBag.Description as string ?? "Thiết kế tối giản, chất liệu cao cấp mang lại cảm giác thoải mái suốt ngày dài.";
-    var brand = ViewBag.Brand as string;
-    var material = ViewBag.Material as string;
+    var related = ViewBag.Related as List<ProductViewModel> ?? new();
+    var reviews = ViewBag.Reviews as List<ShopProject.Models.DanhGium> ?? new();
+    var avgRating = reviews.Any() ? reviews.Average(r => r.SoSao) : 5.0;
+    var starDisplay = new string('★', (int)Math.Round(avgRating));
 }
 
-<style>
-    .pdp-wrap {
-        max-width: 1160px;
-        margin: 0 auto;
-        padding: 28px 24px 64px;
-    }
-    .pdp-breadcrumb {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        font-size: 13px;
-        color: #64748b;
-        margin-bottom: 24px;
-    }
-    .pdp-breadcrumb a {
-        color: #64748b;
-        text-decoration: none;
-    }
-    .pdp-breadcrumb a:hover { color: #0f172a; }
-    .pdp-breadcrumb strong { color: #0f172a; font-weight: 600; }
-
-    .pdp-grid {
-        display: grid;
-        grid-template-columns: 1.05fr 1fr;
-        gap: 48px;
-        align-items: start;
-    }
-    @@media (max-width: 900px) {
-        .pdp-grid { grid-template-columns: 1fr; gap: 28px; }
-    }
-
-    /* Cột trái: Ảnh sản phẩm */
-    .pdp-main-img {
-        width: 100%;
-        aspect-ratio: 4 / 4.4;
-        border-radius: 14px;
-        overflow: hidden;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-    }
-    .pdp-main-img img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-    }
-    .pdp-thumbs {
-        display: flex;
-        gap: 10px;
-        margin-top: 12px;
-        flex-wrap: wrap;
-    }
-    .pdp-thumb {
-        width: 68px;
-        height: 68px;
-        border-radius: 10px;
-        overflow: hidden;
-        border: 2px solid transparent;
-        padding: 0;
-        background: #f8fafc;
-        cursor: pointer;
-        transition: all 0.15s ease;
-    }
-    .pdp-thumb.active, .pdp-thumb:hover {
-        border-color: #18181b;
-    }
-    .pdp-thumb img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-        display: block;
-    }
-
-    /* Cột phải: Thông tin & Chọn mua */
-    .pdp-cat {
-        font-size: 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: #64748b;
-        margin-bottom: 8px;
-    }
-    .pdp-title {
-    font-family: 'Be Vietnam Pro', 'Segoe UI', Arial, sans-serif;
-    font-size: 32px;
-    font-weight: 800;
-    line-height: 1.25;
-    color: #0f172a;
-    margin: 0 0 12px;
-}
-    .pdp-rating-row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        font-size: 13.5px;
-        color: #475569;
-        margin-bottom: 18px;
-    }
-    .pdp-stars { color: #f59e0b; letter-spacing: 1px; }
-    .pdp-price {
-        font-size: 26px;
-        font-weight: 800;
-        color: #0f172a;
-        margin-bottom: 16px;
-    }
-    .pdp-desc {
-        font-size: 14.5px;
-        line-height: 1.65;
-        color: #475569;
-        margin-bottom: 18px;
-    }
-    .pdp-meta-tags {
-        display: flex;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin-bottom: 22px;
-    }
-    .pdp-meta-tag {
-        font-size: 12.5px;
-        padding: 5px 11px;
-        border-radius: 6px;
-        background: #f1f5f9;
-        color: #334155;
-    }
-
-    /* Thẻ chọn biến thể Size / Màu nằm ngang gọn gàng */
-    .pdp-label {
-        font-size: 13.5px;
-        font-weight: 700;
-        color: #0f172a;
-        margin-bottom: 10px;
-        display: block;
-    }
-    .variant-pills {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 10px;
-        margin-bottom: 24px;
-    }
-    .variant-pill {
-        display: inline-flex;
-        align-items: center;
-        gap: 8px;
-        padding: 9px 14px;
-        border-radius: 10px;
-        border: 1.5px solid #cbd5e1;
-        background: #ffffff;
-        color: #1e293b;
-        font-size: 13.5px;
-        font-weight: 600;
-        cursor: pointer;
-        white-space: nowrap;
-        transition: all 0.15s ease;
-    }
-    .variant-pill:hover:not(:disabled) {
-        border-color: #18181b;
-    }
-    .variant-pill.active {
-        border-color: #18181b;
-        background: #18181b;
-        color: #ffffff;
-    }
-    .variant-pill.active .v-stock { color: #cbd5e1; }
-    .variant-pill:disabled {
-        opacity: 0.45;
-        cursor: not-allowed;
-        text-decoration: line-through;
-    }
-    .v-dot {
-        width: 13px;
-        height: 13px;
-        border-radius: 50%;
-        border: 1px solid rgba(0, 0, 0, 0.18);
-        flex-shrink: 0;
-    }
-    .v-stock {
-        font-size: 12px;
-        font-weight: 500;
-        color: #64748b;
-    }
-
-    /* Cụm số lượng & nút đặt hàng */
-    .pdp-buy-row {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-        margin-bottom: 24px;
-        flex-wrap: wrap;
-    }
-    .qty-stepper {
-        display: inline-flex;
-        align-items: center;
-        border: 1.5px solid #cbd5e1;
-        border-radius: 10px;
-        height: 46px;
-        overflow: hidden;
-        background: #ffffff;
-    }
-    .qty-stepper button {
-        width: 38px;
-        height: 100%;
-        border: 0;
-        background: transparent;
-        font-size: 17px;
-        font-weight: 600;
-        color: #0f172a;
-        cursor: pointer;
-    }
-    .qty-stepper button:hover { background: #f1f5f9; }
-    .qty-stepper input {
-        width: 44px;
-        height: 100%;
-        border: 0;
-        text-align: center;
-        font-size: 14.5px;
-        font-weight: 700;
-        color: #0f172a;
-        outline: none;
-    }
-
-    .btn-add-cart {
-        flex: 1;
-        min-width: 175px;
-        height: 46px;
-        border-radius: 10px;
-        border: 1.5px solid #18181b;
-        background: #ffffff;
-        color: #18181b;
-        font-size: 14px;
-        font-weight: 700;
-        cursor: pointer;
-        transition: all 0.16s ease;
-    }
-    .btn-add-cart:hover { background: #f8fafc; }
-
-    .btn-buy-now {
-        flex: 1;
-        min-width: 165px;
-        height: 46px;
-        border-radius: 10px;
-        border: 1.5px solid #18181b;
-        background: #18181b;
-        color: #ffffff;
-        font-size: 14px;
-        font-weight: 700;
-        cursor: pointer;
-        transition: all 0.16s ease;
-    }
-    .btn-buy-now:hover { background: #27272a; }
-
-    .pdp-policies {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 10px;
-        padding-top: 18px;
-        border-top: 1px solid #e2e8f0;
-        font-size: 12.5px;
-        color: #475569;
-    }
-    .pdp-policy-item {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    /* Phần đánh giá & Sản phẩm liên quan căn thẳng trục */
-    .pdp-section {
-        margin-top: 56px;
-        padding-top: 36px;
-        border-top: 1px solid #e2e8f0;
-    }
-    .pdp-section-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
-        margin-bottom: 22px;
-        gap: 16px;
-    }
-    .pdp-eyebrow {
-        font-size: 11.5px;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        color: #64748b;
-        text-transform: uppercase;
-        margin: 0 0 6px;
-    }
-    .pdp-section-title {
-    font-family: 'Be Vietnam Pro', 'Segoe UI', Arial, sans-serif;
-    font-size: 24px;
-    font-weight: 700;
-    color: #0f172a;
-    margin: 0;
-}
-    .review-empty-box {
-        padding: 24px;
-        border-radius: 12px;
-        background: #f8fafc;
-        border: 1px solid #e2e8f0;
-        color: #64748b;
-        font-size: 14px;
-    }
-    .related-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 20px;
-    }
-    @@media (max-width: 900px) {
-        .related-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    .rel-card {
-        display: block;
-        text-decoration: none;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        overflow: hidden;
-        background: #ffffff;
-        transition: transform 0.16s ease, box-shadow 0.16s ease;
-    }
-    .rel-card:hover {
-        transform: translateY(-3px);
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.07);
-    }
-    .rel-card img {
-        width: 100%;
-        aspect-ratio: 4 / 4.3;
-        object-fit: cover;
-        display: block;
-    }
-    .rel-card-body {
-        padding: 12px 14px;
-    }
-    .rel-card-cat {
-        font-size: 11.5px;
-        color: #64748b;
-        margin-bottom: 4px;
-    }
-    .rel-card-name {
-        font-size: 14.5px;
-        font-weight: 700;
-        color: #0f172a;
-        margin: 0 0 6px;
-    }
-    .rel-card-price {
-        font-size: 14px;
-        font-weight: 700;
-        color: #18181b;
-    }
-</style>
-
-<div class="pdp-wrap">
-    <nav class="pdp-breadcrumb">
-        <a asp-action="Index" asp-controller="Shop">Trang chủ</a>
+<main class="detail-page">
+    <nav class="breadcrumb">
+        <a asp-controller="Shop" asp-action="Index">Trang chủ</a>
         <span>/</span>
-        <a asp-action="Index" asp-controller="Shop" asp-route-category="@Model.Category">@Model.Category</a>
+        <a asp-controller="Shop" asp-action="Index" asp-route-category="@Model.Category">@Model.Category</a>
         <span>/</span>
         <strong>@Model.Name</strong>
     </nav>
 
-    @if (TempData["CartError"] is string cartErr)
+    @if (TempData["ReviewSuccess"] != null)
     {
-        <div style="margin-bottom:18px;padding:12px 16px;border-radius:10px;background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;font-size:13.5px;font-weight:600">
-            @cartErr
+        <div style="background:#dcfce7;color:#166534;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-weight:500">
+            ✓ @TempData["ReviewSuccess"]
+        </div>
+    }
+    @if (TempData["ReviewError"] != null)
+    {
+        <div style="background:#fee2e2;color:#991b1b;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-weight:500">
+            ⚠ @TempData["ReviewError"]
         </div>
     }
 
-    <div class="pdp-grid">
-        <!-- CỘT TRÁI: HÌNH ẢNH -->
-        <div>
-            <div class="pdp-main-img">
-                <img id="pdp-hero-img" src="@images.First()" alt="@Model.Name" />
+    <div class="detail-layout">
+        <section class="detail-gallery">
+            <div class="main-detail-image"><img src="@Model.Image" alt="@Model.Name" /></div>
+            <div class="detail-thumbs">
+                <img src="@Model.Image" alt="@Model.Name" />
+                <img src="@Model.Image" alt="@Model.Name" />
+                <img src="@Model.Image" alt="@Model.Name" />
+            </div>
+        </section>
+
+        <section class="detail-info">
+            <span class="hero-tag">@Model.Category</span>
+            <h1>@Model.Name</h1>
+            <div class="detail-rating"><b>@starDisplay</b><span>@avgRating.ToString("0.0") (@reviews.Count đánh giá)</span></div>
+            <strong class="detail-price">@Model.Price.ToString("N0") đ</strong>
+            <p class="detail-description">Sản phẩm được may từ chất liệu cao cấp, mềm mại và thoáng mát. Thiết kế hiện đại, dễ phối đồ và phù hợp cho nhiều hoàn cảnh.</p>
+
+            <div class="selected-variant">
+                <span>Phiên bản</span>
+                <strong>@(string.IsNullOrWhiteSpace(Model.VariantLabel) ? "Chưa có phiên bản khả dụng" : Model.VariantLabel)</strong>
+                <small>@(Model.Stock > 0 ? $"Còn {Model.Stock} sản phẩm" : "Sản phẩm hiện đang tạm hết hàng")</small>
             </div>
 
-            @if (images.Count > 1)
-            {
-                <div class="pdp-thumbs">
-                    @for (int i = 0; i < images.Count; i++)
-                    {
-                        <button type="button" class="pdp-thumb @(i == 0 ? "active" : "")" onclick="switchProductImage(this, '@images[i]')">
-                            <img src="@images[i]" alt="@Model.Name" />
-                        </button>
-                    }
+            <div class="detail-actions">
+                <div class="quantity detail-quantity">
+                    <button type="button" aria-label="Giảm số lượng">−</button>
+                    <strong id="detailQty">1</strong>
+                    <button type="button" aria-label="Tăng số lượng">＋</button>
                 </div>
-            }
-        </div>
-
-        <!-- CỘT PHẢI: THÔNG TIN & CHỌN MUA -->
-        <div>
-            <div class="pdp-cat">@Model.Category</div>
-            <h1 class="pdp-title">@Model.Name</h1>
-
-            <div class="pdp-rating-row">
-                <span class="pdp-stars">★★★★★</span>
-                <span><strong>5.0</strong> (@reviews.Count() đánh giá)</span>
+                <button type="button" class="checkout-button" data-add-cart="@Model.Id" data-variant-id="@Model.VariantId"
+                        data-variant-label="@Model.VariantLabel" data-stock="@Model.Stock" data-name="@Model.Name" data-price="@Model.Price"
+                        data-image="@Model.Image" data-category="@Model.Category" disabled="@(Model.VariantId == null || Model.Stock < 1)">
+                    Thêm vào giỏ hàng
+                </button>
+                <button type="button" class="detail-favorite" data-wishlist="@Model.Id">♡</button>
             </div>
 
-            <div class="pdp-price" id="pdp-price-display">@Model.Price.ToString("N0") đ</div>
-
-            <p class="pdp-desc">@description</p>
-
-            @if (!string.IsNullOrWhiteSpace(brand) || !string.IsNullOrWhiteSpace(material))
-            {
-                <div class="pdp-meta-tags">
-                    @if (!string.IsNullOrWhiteSpace(brand))
-                    {
-                        <span class="pdp-meta-tag">Thương hiệu: <strong>@brand</strong></span>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(material))
-                    {
-                        <span class="pdp-meta-tag">Chất liệu: <strong>@material</strong></span>
-                    }
-                </div>
-            }
-
-            <form method="post" asp-action="AddToCart" asp-controller="Shop" id="pdp-order-form">
-                @Html.AntiForgeryToken()
-                <input type="hidden" name="productId" value="@Model.Id" />
-                <input type="hidden" name="variantId" id="selected-variant-id" value="" />
-
-                <span class="pdp-label">Phân loại (Size / Màu sắc)</span>
-                <div class="variant-pills" id="variant-list">
-                    @{
-                        bool firstSelected = false;
-                    }
-                    @foreach (var v in variants)
-                    {
-                        int avail = v.Available;
-                        bool isDisabled = avail <= 0;
-                        bool isActive = !isDisabled && !firstSelected;
-                        if (isActive) firstSelected = true;
-
-                        <button type="button"
-                                class="variant-pill @(isActive ? "active" : "")"
-                                @(isDisabled ? "disabled" : "")
-                                data-id="@v.Id"
-                                data-price="@(((decimal)v.Price).ToString("N0")) đ"
-                                data-stock="@avail"
-                                onclick="selectVariant(this)">
-                            <span class="v-dot" style="background:@v.ColorHex"></span>
-                            <span>@v.Size - @v.Color</span>
-                            <span class="v-stock">(Còn @avail)</span>
-                        </button>
-                    }
-                </div>
-
-                <div class="pdp-buy-row">
-                    <div class="qty-stepper">
-                        <button type="button" onclick="changePdpQty(-1)">−</button>
-                        <input type="number" name="quantity" id="pdp-qty" value="1" min="1" max="99" readonly />
-                        <button type="button" onclick="changePdpQty(1)">+</button>
-                    </div>
-
-                    <button type="submit" class="btn-add-cart">Thêm vào giỏ hàng</button>
-                    <button type="submit" class="btn-buy-now">Mua ngay</button>
-                </div>
-            </form>
-
-            <div class="pdp-policies">
-                <div class="pdp-policy-item">✓ Giao hàng miễn phí</div>
-                <div class="pdp-policy-item">✓ Đổi trả trong 7 ngày</div>
-                <div class="pdp-policy-item">✓ Thanh toán linh hoạt</div>
+            <div class="detail-benefits">
+                <span>✓ Giao hàng miễn phí</span>
+                <span>✓ Đổi trả trong 7 ngày</span>
+                <span>✓ Thanh toán khi nhận hàng</span>
             </div>
-        </div>
+        </section>
     </div>
 
-    <!-- ĐÁNH GIÁ KHÁCH HÀNG -->
-    <section class="pdp-section">
-        <div class="pdp-section-head">
-            <div>
-                <p class="pdp-eyebrow">ĐÁNH GIÁ</p>
-                <h2 class="pdp-section-title">Nhận xét từ khách hàng</h2>
-            </div>
-            <strong style="font-size:15px;color:#0f172a">5.0/5 (@reviews.Count() đánh giá)</strong>
+    <section class="review-detail">
+        <div class="section-heading">
+            <div><span>ĐÁNH GIÁ</span><h2>Nhận xét từ khách hàng</h2></div>
+            <b>@avgRating.ToString("0.0")/5</b>
         </div>
+
+        <form method="post" asp-controller="Shop" asp-action="AddReview" style="background:#f8fafc;padding:18px;border-radius:12px;margin-bottom:20px;border:1px solid #e2e8f0">
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="sanPhamId" value="@Model.Id" />
+            <div style="display:flex;gap:12px;align-items:center;margin-bottom:10px;flex-wrap:wrap">
+                <label style="font-weight:600">Đánh giá của bạn:</label>
+                <select name="soSao" style="padding:8px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff">
+                    <option value="5">★★★★★ (5 sao - Tuyệt vời)</option>
+                    <option value="4">★★★★☆ (4 sao - Hài lòng)</option>
+                    <option value="3">★★★☆☆ (3 sao - Bình thường)</option>
+                    <option value="2">★★☆☆☆ (2 sao - Không hài lòng)</option>
+                    <option value="1">★☆☆☆☆ (1 sao - Rất tệ)</option>
+                </select>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <input name="noiDung" required placeholder="Chia sẻ cảm nhận của bạn về chất liệu, form dáng sản phẩm..."
+                       style="flex:1;min-width:240px;padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px" />
+                <button type="submit" class="checkout-button" style="padding:10px 20px">Gửi đánh giá</button>
+            </div>
+        </form>
 
         @if (!reviews.Any())
         {
-            <div class="review-empty-box">Chưa có đánh giá nào cho sản phẩm này.</div>
+            <p style="color:#64748b;padding:12px 0">Chưa có đánh giá nào được duyệt cho sản phẩm này. Hãy là người đầu tiên nhận xét!</p>
         }
         else
         {
-            <div style="display:grid;gap:12px">
-                @foreach (var r in reviews)
-                {
-                    <div class="review-empty-box" style="background:#ffffff">
-                        <div style="display:flex;justify-content:space-between;margin-bottom:6px">
-                            <strong style="color:#0f172a">Khách hàng</strong>
-                            <span class="pdp-stars">★★★★★</span>
-                        </div>
-                        <p style="margin:0;color:#334155">@r.NoiDung</p>
+            foreach (var r in reviews)
+            {
+                var rStars = new string('★', Math.Clamp((int)r.SoSao, 1, 5));
+                <article class="detail-review">
+                    <div>
+                        <b>@(r.NguoiDung?.HoTen ?? "Khách hàng")</b>
+                        <small class="text-muted">@r.ThoiGianTao.ToString("dd/MM/yyyy")</small>
                     </div>
-                }
-            </div>
+                    <div>
+                        <span>@rStars</span>
+                        <p class="mb-0 mt-1">@r.NoiDung</p>
+                    </div>
+                </article>
+            }
         }
     </section>
 
-    <!-- SẢN PHẨM LIÊN QUAN -->
-    @if (related.Count > 0)
+    @if (related.Any())
     {
-        <section class="pdp-section">
-            <div class="pdp-section-head">
-                <div>
-                    <p class="pdp-eyebrow">CÓ THỂ BẠN THÍCH</p>
-                    <h2 class="pdp-section-title">Sản phẩm liên quan</h2>
-                </div>
-            </div>
-
-            <div class="related-grid">
-                @foreach (var item in related)
-                {
-                    <a asp-action="Detail" asp-controller="Shop" asp-route-id="@item.Id" class="rel-card">
-                        <img src="@item.Image" alt="@item.Name" />
-                        <div class="rel-card-body">
-                            <div class="rel-card-cat">@item.Category</div>
-                            <h3 class="rel-card-name">@item.Name</h3>
-                            <div class="rel-card-price">@item.Price.ToString("N0") đ</div>
-                        </div>
+    <section class="recommend-section">
+        <div class="section-heading">
+            <div><span>ĐƯỢC CHỌN DÀNH RIÊNG CHO BẠN</span><h2>Có thể bạn cũng thích</h2></div>
+        </div>
+        <div class="recommend-grid">
+            @foreach (var p in related)
+            {
+                <article class="product-card">
+                    <a asp-controller="Shop" asp-action="Detail" asp-route-id="@p.Id" class="product-photo">
+                        <img src="@p.Image" alt="@p.Name" />
                     </a>
-                }
-            </div>
-        </section>
+                    <div class="product-info">
+                        <small class="text-muted">@p.Category</small>
+                        <a asp-controller="Shop" asp-action="Detail" asp-route-id="@p.Id" class="product-title">@p.Name</a>
+                        <strong class="product-price">@p.Price.ToString("N0") đ</strong>
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
     }
-</div>
+</main>
 
-<script>
-    function switchProductImage(btn, url) {
-        document.getElementById('pdp-hero-img').src = url;
-        document.querySelectorAll('.pdp-thumb').forEach(t => t.classList.remove('active'));
-        btn.classList.add('active');
-    }
-
-    function selectVariant(btn) {
-        document.querySelectorAll('.variant-pill').forEach(p => p.classList.remove('active'));
-        btn.classList.add('active');
-
-        document.getElementById('selected-variant-id').value = btn.dataset.id;
-        document.getElementById('pdp-price-display').textContent = btn.dataset.price;
-
-        const maxStock = parseInt(btn.dataset.stock || '1', 10);
-        const qtyInput = document.getElementById('pdp-qty');
-        qtyInput.max = Math.max(1, maxStock);
-        if (parseInt(qtyInput.value, 10) > maxStock) {
-            qtyInput.value = Math.max(1, maxStock);
-        }
-    }
-
-    function changePdpQty(delta) {
-        const input = document.getElementById('pdp-qty');
-        const max = parseInt(input.max || '99', 10);
-        const next = Math.min(max, Math.max(1, (parseInt(input.value, 10) || 1) + delta));
-        input.value = next;
-    }
-
-    (function initDefaultVariant() {
-        const activeBtn = document.querySelector('.variant-pill.active');
-        if (activeBtn) {
-            selectVariant(activeBtn);
-        }
-    })();
-</script>
+@section Scripts {
+    <script src="~/js/site.js" asp-append-version="true"></script>
+}

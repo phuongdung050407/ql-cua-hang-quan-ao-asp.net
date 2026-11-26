@@ -1,4 +1,4 @@
-@model List<ShopProject.Models.Entities.DonHang>
+﻿@model List<ShopProject.Models.DonHang>
 @{
     ViewData["Title"] = "Quản lý thanh toán chuyển khoản";
     var selectedPayStatus = (ViewBag.PayStatus as string ?? "").Trim();
@@ -200,3 +200,4 @@
     </div>
     <div class="table-footer"><span>Hiển thị @Model.Count giao dịch chuyển khoản</span></div>
 </section>
+

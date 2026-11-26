@@ -1,33 +1,29 @@
-@model List<PersonViewModel>
+@model List<ShopProject.Models.NguoiDung>
 @{
     ViewData["Title"] = "Người dùng";
-    var selectedRole = ViewBag.SelectedRole as string ?? "";
+    string MapRole(ShopProject.Models.NguoiDung u)
+    {
+        var code = u.VaiTros.FirstOrDefault()?.MaVaiTro;
+        return code switch
+        {
+            "ADMIN" or "QUAN_TRI" => "Quản trị viên",
+            "NHAN_VIEN" => "Nhân viên",
+            _ => "Khách hàng"
+        };
+    }
 }
 <div class="page-heading">
     <div>
         <p class="eyebrow">TÀI KHOẢN</p>
         <h1>Người dùng</h1>
     </div>
+    <a href="/Shop/Register" class="primary-button">＋ Thêm người dùng</a>
 </div>
 
-@if (TempData["UserSuccess"] != null)
-{
-    <p style="color:#15803d;margin-bottom:12px">@TempData["UserSuccess"]</p>
-}
-
-<form method="get" asp-action="Users" asp-controller="Management" class="management-toolbar">
-    <div class="filter-search">
-        ⌕ <input name="search" value="@ViewBag.Search" placeholder="Tìm họ tên, email, SĐT...">
-    </div>
-    <select name="role" onchange="this.form.submit()">
-        <option value="">Tất cả vai trò</option>
-        <option value="KHACH_HANG" selected="@(selectedRole == "KHACH_HANG")">Khách hàng</option>
-        <option value="NHAN_VIEN" selected="@(selectedRole == "NHAN_VIEN")">Nhân viên</option>
-        <option value="ADMIN" selected="@(selectedRole == "ADMIN")">Quản trị viên</option>
-    </select>
-</form>
-
 <section class="panel table-panel">
+    <div class="management-toolbar">
+        <div class="filter-search">⌕ <input placeholder="Tìm khách hàng..."></div>
+    </div>
     <div class="table-wrap">
         <table>
             <thead>
@@ -43,28 +39,30 @@
             <tbody>
                 @foreach (var u in Model)
                 {
+                    var isActive = u.TrangThai == "Hoat_dong";
+                    var initial = string.IsNullOrWhiteSpace(u.HoTen) ? "U" : u.HoTen.Trim().Substring(0, 1).ToUpper();
                     <tr>
                         <td>
                             <div class="person-cell">
-                                <div>@(string.IsNullOrEmpty(u.Name) ? "U" : u.Name.Substring(0, 1).ToUpper())</div>
-                                <strong>@u.Name</strong>
+                                <div>@initial</div>
+                                <strong>@u.HoTen</strong>
                             </div>
                         </td>
-                        <td>@u.Phone</td>
+                        <td>@(string.IsNullOrWhiteSpace(u.SoDienThoai) ? "—" : u.SoDienThoai)</td>
                         <td>@u.Email</td>
-                        <td>@u.Role</td>
+                        <td>@MapRole(u)</td>
                         <td>
-                            <form method="post" asp-action="UpdateUserStatus" asp-controller="Management" style="display:flex;gap:6px;align-items:center">
+                            <form method="post" action="/Management/UpdateUserStatus" style="display:flex;gap:8px;align-items:center">
                                 @Html.AntiForgeryToken()
                                 <input type="hidden" name="id" value="@u.Id" />
-                                <select name="status" class="status-select">
-                                    <option value="Hoat_dong" selected="@(u.Status == "Hoạt động")">Hoạt động</option>
-                                    <option value="Khoa" selected="@(u.Status == "Tạm khóa")">Tạm khóa</option>
+                                <select name="trangThai" class="status-select">
+                                    <option value="Hoat_dong" selected="@isActive">Hoạt động</option>
+                                    <option value="Khoa" selected="@(!isActive)">Tạm khóa</option>
                                 </select>
                                 <button type="submit" class="icon-button">Lưu</button>
                             </form>
                         </td>
-                        <td>—</td>
+                        <td><span style="font-size:12px;color:#64748b">ID #@u.Id</span></td>
                     </tr>
                 }
             </tbody>

@@ -1,151 +1,174 @@
 using System.Diagnostics;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ShopProject.Models;
-using ShopProject.Models.Entities;
 
 namespace ShopProject.Controllers;
 
+[Authorize(Roles = "Admin,Employee")]
 public class HomeController : Controller
 {
-    private readonly ClothingShopDbContext _context;
+    private readonly ClothingShopContext _context;
 
-    public HomeController(ClothingShopDbContext context)
+    public HomeController(ClothingShopContext context)
     {
         _context = context;
     }
 
     public async Task<IActionResult> Index()
     {
-        var today = DateTime.Today;
-        var currentYear = today.Year;
-        var currentMonth = today.Month;
-        var monthStart = new DateTime(currentYear, currentMonth, 1);
-        var monthEnd = monthStart.AddMonths(1);
-        var prevMonthStart = monthStart.AddMonths(-1);
+        var year = DateTime.Today.Year;
+        var month = DateTime.Today.Month;
 
+        // 1. Doanh thu 12 tháng của năm hiện tại (loại trừ đơn đã hủy)
         var validOrdersYear = await _context.DonHangs
-            .Where(d => d.ThoiGianTao.Year == currentYear && d.TrangThai != "Da_huy")
-            .Select(d => new { d.ThoiGianTao, d.TongThanhToan })
+            .AsNoTracking()
+            .Where(o => o.ThoiGianTao.Year == year && o.TrangThai != "Da_huy")
             .ToListAsync();
-
-        var monthRevenue = validOrdersYear
-            .Where(d => d.ThoiGianTao >= monthStart && d.ThoiGianTao < monthEnd)
-            .Sum(d => d.TongThanhToan);
-
-        var prevMonthRevenue = validOrdersYear
-            .Where(d => d.ThoiGianTao >= prevMonthStart && d.ThoiGianTao < monthStart)
-            .Sum(d => d.TongThanhToan);
-
-        var monthOrderCount = validOrdersYear
-            .Count(d => d.ThoiGianTao >= monthStart && d.ThoiGianTao < monthEnd);
-
-        var tonKhos = await _context.TonKhos
-    .Include(t => t.BienThe)
-        .ThenInclude(bt => bt.SanPham)
-    .Where(t => t.Kho.TrangThai && t.BienThe.TrangThai && t.BienThe.SanPham.TrangThai == "Dang_ban")
-    .ToListAsync();
-
-var variantIds = tonKhos.Select(t => t.BienTheId).Distinct().ToList();
-
-var inCartByVariant = await _context.GioHangChiTiets
-    .Where(ct => variantIds.Contains(ct.BienTheId))
-    .GroupBy(ct => ct.BienTheId)
-    .Select(g => new { BienTheId = g.Key, Qty = g.Sum(x => x.SoLuong) })
-    .ToDictionaryAsync(x => x.BienTheId, x => x.Qty);
-
-var since30Days = DateTime.Now.AddDays(-30);
-var soldByVariant = await _context.DonHangChiTiets
-    .Where(ct => variantIds.Contains(ct.BienTheId)
-                 && ct.DonHang.ThoiGianTao >= since30Days
-                 && ct.DonHang.TrangThai != "Da_huy")
-    .GroupBy(ct => ct.BienTheId)
-    .Select(g => new { BienTheId = g.Key, Qty = g.Sum(x => x.SoLuong) })
-    .ToDictionaryAsync(x => x.BienTheId, x => x.Qty);
-
-var lowStockCount = tonKhos.Count(t =>
-{
-    var avail = t.SoLuongTon - t.SoLuongGiuCho;
-    var inCart = inCartByVariant.GetValueOrDefault(t.BienTheId, 0);
-    var sold30 = soldByVariant.GetValueOrDefault(t.BienTheId, 0);
-    var isHighDemand = (inCart + t.SoLuongGiuCho >= 2) || (sold30 >= 3 && avail <= 8);
-    return avail <= 5 || isHighDemand;
-});
-
-        var customerCount = await _context.NguoiDungs
-            .CountAsync(u => u.VaiTros.Any(v => v.MaVaiTro == "KHACH_HANG"));
 
         var monthlyRevenues = Enumerable.Range(1, 12)
-            .Select(m => validOrdersYear.Where(d => d.ThoiGianTao.Month == m).Sum(d => d.TongThanhToan))
+            .Select(m => validOrdersYear
+                .Where(o => o.ThoiGianTao.Month == m)
+                .Sum(o => o.TongThanhToan))
             .ToList();
 
-        var catSales = await _context.DonHangChiTiets
-            .Where(ct => ct.DonHang.ThoiGianTao.Year == currentYear && ct.DonHang.TrangThai != "Da_huy")
-            .GroupBy(ct => ct.BienThe.SanPham.DanhMuc.TenDanhMuc)
-            .Select(g => new { Category = g.Key, Revenue = g.Sum(x => x.DonGia * x.SoLuong) })
+        // 2. Doanh thu & tỷ lệ % theo danh mục trong năm hiện tại
+        var orderDetailsYear = await _context.DonHangChiTiets
+            .AsNoTracking()
+            .Include(ct => ct.DonHang)
+            .Include(ct => ct.BienThe)
+                .ThenInclude(bt => bt.SanPham)
+                    .ThenInclude(sp => sp.DanhMuc)
+            .Where(ct => ct.DonHang != null
+                    && ct.DonHang.ThoiGianTao.Year == year
+                    && ct.DonHang.TrangThai != "Da_huy")
+            .ToListAsync();
+
+        var totalCatRev = orderDetailsYear.Sum(ct => ct.ThanhTien ?? (ct.DonGia * ct.SoLuong));
+
+        var categoryBreakdown = orderDetailsYear
+            .GroupBy(ct => ct.BienThe?.SanPham?.DanhMuc?.TenDanhMuc ?? "Khác")
+            .Select(g =>
+            {
+                var rev = g.Sum(ct => ct.ThanhTien ?? (ct.DonGia * ct.SoLuong));
+                var pct = totalCatRev > 0 ? (int)Math.Round(rev * 100m / totalCatRev) : 0;
+                return new
+                {
+                    Category = g.Key,
+                    Revenue = rev,
+                    Percent = pct
+                };
+            })
             .OrderByDescending(x => x.Revenue)
+            .ToList();
+
+        ViewBag.CurrentYear = year;
+        ViewBag.CurrentMonth = month;
+        ViewBag.MonthlyRevenues = monthlyRevenues;
+        ViewBag.CategoryBreakdown = categoryBreakdown;
+        var today = DateTime.Today;
+        var isAdmin = User.IsInRole("Admin");
+
+        decimal revenueToday = 0;
+        decimal revenueMonth = 0;
+        int customerCount = 0;
+
+        // Chỉ truy vấn dữ liệu doanh thu & khách hàng khi tài khoản là Admin
+        if (isAdmin)
+        {
+            var firstDayOfMonth = new DateTime(today.Year, today.Month, 1);
+            var validOrders = _context.DonHangs.Where(d => d.TrangThai != "Da_huy");
+
+            revenueToday = await validOrders
+                .Where(d => d.ThoiGianTao >= today)
+                .SumAsync(d => (decimal?)d.TongThanhToan) ?? 0;
+
+            revenueMonth = await validOrders
+                .Where(d => d.ThoiGianTao >= firstDayOfMonth)
+                .SumAsync(d => (decimal?)d.TongThanhToan) ?? 0;
+
+            customerCount = await _context.NguoiDungs.CountAsync();
+        }
+
+        // Dữ liệu vận hành chung cho cả Admin và Nhân viên
+        var ordersToday = await _context.DonHangs
+            .CountAsync(d => d.ThoiGianTao >= today);
+
+        var lowStockCount = await _context.TonKhos
+            .CountAsync(t => t.SoLuongTon <= 5);
+
+        var dbProducts = await _context.SanPhams
+            .Include(p => p.DanhMuc)
+            .Include(p => p.SanPhamAnhs)
+            .Include(p => p.BienTheSanPhams).ThenInclude(bt => bt.TonKhos)
+            .OrderByDescending(p => p.Id)
+            .Take(6)
             .ToListAsync();
 
-        var totalCatRev = catSales.Sum(x => x.Revenue);
-        var categoryBreakdown = catSales.Select(c => new
+        var products = dbProducts.Select(p =>
         {
-            c.Category,
-            c.Revenue,
-            Percent = totalCatRev > 0 ? (int)Math.Round(c.Revenue * 100m / totalCatRev) : 0
-        }).ToList();
-
-        var recentProducts = await _context.SanPhams
-            .Include(sp => sp.DanhMuc)
-            .Include(sp => sp.SanPhamAnhs)
-            .Include(sp => sp.BienTheSanPhams)
-                .ThenInclude(bt => bt.TonKhos)
-            .OrderByDescending(sp => sp.ThoiGianTao)
-            .Take(5)
-            .ToListAsync();
-
-        var recentProductVms = recentProducts.Select(sp =>
-        {
-            var avail = sp.BienTheSanPhams
-                .Where(bt => bt.TrangThai)
-                .Sum(bt => bt.TonKhos.Sum(tk => tk.SoLuongTon - tk.SoLuongGiuCho));
-            var st = sp.TrangThai != "Dang_ban"
-                ? "Ngừng bán"
-                : (avail == 0 ? "Hết hàng" : (avail <= 5 ? "Sắp hết" : "Đang bán"));
+            var stock = p.BienTheSanPhams.SelectMany(bt => bt.TonKhos).Sum(t => t.SoLuongTon);
+            var status = stock == 0 ? "Hết hàng" : stock <= 5 ? "Sắp hết" : "Đang bán";
+            var img = p.SanPhamAnhs.FirstOrDefault()?.Url;
+            if (string.IsNullOrWhiteSpace(img) || !img.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+            {
+                img = "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=300";
+            }
 
             return new ProductViewModel
             {
-                Id = sp.Id,
-                Name = sp.TenSanPham,
-                Category = sp.DanhMuc?.TenDanhMuc ?? "Khác",
-                Price = sp.GiaBan,
-                Stock = avail,
-                Status = st,
-                Image = sp.SanPhamAnhs
-                    .OrderByDescending(a => a.LaAnhDaiDien)
-                    .Select(a => a.Url)
-                    .FirstOrDefault() ?? "https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=200"
+                Id = p.Id,
+                Name = p.TenSanPham,
+                Category = p.DanhMuc?.TenDanhMuc ?? "Khác",
+                Price = p.GiaBan,
+                Stock = stock,
+                Status = status,
+                Image = img
             };
         }).ToList();
 
-        var latestOrders = await _context.DonHangs
+        var dbOrders = await _context.DonHangs
             .OrderByDescending(d => d.ThoiGianTao)
-            .Take(5)
+            .Take(6)
             .ToListAsync();
 
-        ViewBag.CurrentYear = currentYear;
-        ViewBag.CurrentMonth = currentMonth;
-        ViewBag.MonthRevenue = monthRevenue;
-        ViewBag.PrevMonthRevenue = prevMonthRevenue;
-        ViewBag.MonthOrderCount = monthOrderCount;
-        ViewBag.LowStockCount = lowStockCount;
-        ViewBag.CustomerCount = customerCount;
-        ViewBag.MonthlyRevenues = monthlyRevenues;
-        ViewBag.CategoryBreakdown = categoryBreakdown;
-        ViewBag.LatestOrders = latestOrders;
+        var recentOrders = dbOrders.Select(o => new OrderViewModel
+        {
+            Code = o.MaDonHang,
+            Customer = o.TenNguoiNhan,
+            Date = o.ThoiGianTao.ToString("dd/MM/yyyy"),
+            Total = o.TongThanhToan,
+            Status = MapOrderStatusToVn(o.TrangThai)
+        }).ToList();
 
-        return View(recentProductVms);
+        var model = new DashboardViewModel
+        {
+            RevenueToday = revenueToday,
+            RevenueMonth = revenueMonth,
+            OrdersToday = ordersToday,
+            LowStockCount = lowStockCount,
+            CustomerCount = customerCount,
+            Products = products,
+            RecentOrders = recentOrders
+        };
+
+        return View(model);
     }
 
+    private static string MapOrderStatusToVn(string dbStatus) => dbStatus switch
+    {
+        "Cho_xac_nhan" => "Chờ xử lý",
+        "Da_xac_nhan" => "Đã xác nhận",
+        "Dang_giao" => "Đang giao",
+        "Da_giao" => "Hoàn tất",
+        "Da_huy" => "Đã hủy",
+        _ => "Chờ xử lý"
+    };
+
+    public IActionResult Privacy() => View();
+
+    [AllowAnonymous]
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public IActionResult Error()
     {

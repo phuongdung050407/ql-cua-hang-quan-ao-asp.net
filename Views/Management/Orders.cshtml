@@ -1,26 +1,18 @@
-@model List<ShopProject.Models.Entities.DonHang>
+@model List<ShopProject.Models.DonHang>
 @{
     ViewData["Title"] = "Đơn đặt hàng";
-    var selectedStatus = (ViewBag.Status as string ?? "").Trim();
+    string MapStatus(string? s) => (s ?? "").Trim() switch
+    {
+        "Cho_xac_nhan" => "Chờ xử lý",
+        "Da_xac_nhan" => "Đang xử lý",
+        "Dang_giao" => "Đang giao",
+        "Da_giao" => "Hoàn tất",
+        "Da_huy" => "Đã hủy",
+        _ => "Chờ xử lý"
+    };
 }
-<div class="page-heading">
-    <div>
-        <p class="eyebrow">BÁN HÀNG</p>
-        <h1>Đơn đặt hàng</h1>
-    </div>
-    <a asp-action="Payments" asp-controller="Management" class="btn-invoice">
-        <span>💳</span> Quản lý thanh toán CK
-    </a>
-</div>
+
 <style>
-    .page-heading {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        gap: 12px;
-        flex-wrap: wrap;
-        margin-bottom: 16px;
-    }
     .order-code-link {
         display: inline-block;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -39,145 +31,27 @@
         border-color: #c7d2fe;
         color: #3730a3;
     }
-    .customer-cell {
-        display: flex;
-        flex-direction: column;
-        gap: 2px;
-    }
-    .customer-cell strong {
-        color: #0f172a;
-        font-size: 13.5px;
-        font-weight: 600;
-    }
-    .customer-cell span {
-        color: #64748b;
-        font-size: 12.5px;
-    }
-    .pay-stack {
-        display: inline-flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
-    }
-    .pay-badge {
-        display: inline-flex;
-        align-items: center;
-        padding: 3px 9px;
-        border-radius: 6px;
-        font-size: 12px;
-        font-weight: 600;
-        background: #f1f5f9;
-        color: #334155;
-        border: 1px solid #e2e8f0;
-    }
-    .pay-sub-paid {
-        font-size: 11.5px;
-        font-weight: 600;
-        color: #15803d;
-        background: #f0fdf4;
-        border: 1px solid #bbf7d0;
-        padding: 1px 7px;
-        border-radius: 999px;
-    }
-    .pay-sub-unpaid {
-        font-size: 11.5px;
-        font-weight: 600;
-        color: #b45309;
-        background: #fffbeb;
-        border: 1px solid #fde68a;
-        padding: 1px 7px;
-        border-radius: 999px;
-    }
-    .status-form-inline {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        margin: 0;
-    }
-    .status-form-inline .status-select {
-        height: 30px;
-        padding: 0 26px 0 10px;
-        border-radius: 7px;
-        font-size: 12.5px;
-        font-weight: 600;
-        cursor: pointer;
-        border: 1px solid #e2e8f0;
-        background: #ffffff;
-        color: #0f172a;
-    }
-    .status-form-inline .status-select.st-Cho_xac_nhan {
-        background: #fffbeb;
-        border-color: #fde68a;
-        color: #b45309;
-    }
-    .status-form-inline .status-select.st-Da_xac_nhan {
-        background: #eef2ff;
-        border-color: #c7d2fe;
-        color: #4338ca;
-    }
-    .status-form-inline .status-select.st-Dang_giao {
-        background: #eff6ff;
-        border-color: #bfdbfe;
-        color: #1d4ed8;
-    }
-    .status-form-inline .status-select.st-Da_giao {
-        background: #f0fdf4;
-        border-color: #bbf7d0;
-        color: #15803d;
-    }
-    .status-form-inline .status-select.st-Da_huy {
-        background: #fef2f2;
-        border-color: #fecaca;
-        color: #dc2626;
-    }
-    .status-form-inline .status-select option {
-        background: #ffffff;
-        color: #0f172a;
-    }
     .act-group {
         display: inline-flex;
         align-items: center;
         gap: 6px;
         flex-wrap: nowrap;
+        justify-content: flex-end;
     }
-    .act-btn {
+    .act-track-pay {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         height: 30px;
-        padding: 0 11px;
+        padding: 0 10px;
         border-radius: 7px;
-        font-size: 12.5px;
-        font-weight: 500;
-        line-height: 1;
+        font-size: 12px;
+        font-weight: 600;
         white-space: nowrap;
         text-decoration: none;
-        cursor: pointer;
-        transition: all 0.15s ease;
-        border: 1px solid #e2e8f0;
-        background: #ffffff;
-        color: #334155;
-    }
-    .act-btn:hover {
-        background: #f8fafc;
-        border-color: #cbd5e1;
-        color: #0f172a;
-    }
-    .act-save {
-        color: #4f46e5;
-        border-color: #c7d2fe;
-        background: #eef2ff;
-    }
-    .act-save:hover {
-        background: #e0e7ff;
-        border-color: #a5b4fc;
-        color: #3730a3;
-    }
-    .act-track-pay {
         color: #b45309;
-        border-color: #fde68a;
+        border: 1px solid #fde68a;
         background: #fffbeb;
-        font-weight: 600;
     }
     .act-track-pay:hover {
         background: #fef3c7;
@@ -214,6 +88,19 @@
     }
 </style>
 
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">VẬN HÀNH BÁN HÀNG</p>
+        <h1>Đơn đặt hàng</h1>
+    </div>
+    <div style="display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <a asp-action="Payments" asp-controller="Management" class="btn-invoice">
+            <span>💳</span> Quản lý thanh toán CK
+        </a>
+        <a href="/Shop" class="primary-button"><i class="bi bi-plus-lg"></i> Tạo đơn tại quầy</a>
+    </div>
+</div>
+
 @if (TempData["OrderSuccess"] != null)
 {
     <p style="color:#15803d;margin-bottom:12px;font-weight:500">@TempData["OrderSuccess"]</p>
@@ -225,40 +112,41 @@
 
 <div class="stats-grid people-stats">
     <article class="stat-card">
-        <div class="stat-icon amber">◷</div>
-        <div><p>Chờ xử lý</p><strong>@ViewBag.PendingCount</strong></div>
+        <div class="stat-icon amber"><i class="bi bi-clock-history"></i></div>
+        <div><p>Chờ xử lý</p><strong>@(ViewBag.PendingCount ?? 0)</strong></div>
     </article>
     <article class="stat-card">
-        <div class="stat-icon blue">▻</div>
-        <div><p>Đang giao</p><strong>@ViewBag.ShippingCount</strong></div>
+        <div class="stat-icon blue"><i class="bi bi-truck"></i></div>
+        <div><p>Đang giao</p><strong>@(ViewBag.ShippingCount ?? 0)</strong></div>
     </article>
     <article class="stat-card">
-        <div class="stat-icon green">✓</div>
-        <div><p>Hoàn tất</p><strong>@ViewBag.CompletedCount</strong></div>
+        <div class="stat-icon green"><i class="bi bi-check2-circle"></i></div>
+        <div><p>Hoàn tất</p><strong>@(ViewBag.CompletedCount ?? 0)</strong></div>
     </article>
     <article class="stat-card">
-        <div class="stat-icon violet">◆</div>
-        <div><p>Tổng đơn tháng</p><strong>@ViewBag.MonthCount</strong></div>
+        <div class="stat-icon violet"><i class="bi bi-bag-check"></i></div>
+        <div><p>Tổng đơn hàng</p><strong>@(ViewBag.TotalMonthCount ?? Model.Count)</strong></div>
     </article>
 </div>
 
 <section class="panel table-panel">
-    <form method="get" asp-action="Orders" asp-controller="Management" class="management-toolbar">
-        <div class="filter-search">
-            ⌕ <input name="search" value="@ViewBag.Search" placeholder="Tìm mã đơn, khách hàng, SĐT...">
+    <div class="management-toolbar" style="padding: 18px 20px 10px;">
+        <div class="order-filter-tabs" id="orderTabs">
+            <button type="button" class="filter-tab active" data-filter="ALL">Tất cả (@Model.Count)</button>
+            <button type="button" class="filter-tab" data-filter="Chờ xử lý">Chờ xử lý</button>
+            <button type="button" class="filter-tab" data-filter="Đang xử lý">Đang xử lý</button>
+            <button type="button" class="filter-tab" data-filter="Đang giao">Đang giao</button>
+            <button type="button" class="filter-tab" data-filter="Hoàn tất">Hoàn tất</button>
+            <button type="button" class="filter-tab" data-filter="Đã hủy">Đã hủy</button>
         </div>
-        <select name="status" onchange="this.form.submit()">
-            <option value="">Tất cả trạng thái</option>
-            <option value="Cho_xac_nhan" selected="@(selectedStatus == "Cho_xac_nhan")">Chờ xác nhận</option>
-            <option value="Da_xac_nhan" selected="@(selectedStatus == "Da_xac_nhan")">Đã xác nhận</option>
-            <option value="Dang_giao" selected="@(selectedStatus == "Dang_giao")">Đang giao</option>
-            <option value="Da_giao" selected="@(selectedStatus == "Da_giao")">Hoàn tất</option>
-            <option value="Da_huy" selected="@(selectedStatus == "Da_huy")">Đã hủy</option>
-        </select>
-    </form>
+        <div class="filter-search">
+            <i class="bi bi-search text-muted"></i>
+            <input type="text" id="orderSearchInput" placeholder="Tìm mã đơn, tên hoặc SĐT khách...">
+        </div>
+    </div>
 
     <div class="table-wrap">
-        <table>
+        <table id="ordersTable">
             <thead>
                 <tr>
                     <th>Mã đơn</th>
@@ -267,68 +155,92 @@
                     <th>Tổng tiền</th>
                     <th>Thanh toán</th>
                     <th>Trạng thái</th>
-                    <th>Thao tác</th>
+                    <th>Xử lý nhanh</th>
+                    <th class="text-end">Hóa đơn</th>
                 </tr>
             </thead>
             <tbody>
                 @foreach (var o in Model)
                 {
-                    var st = (o.TrangThai ?? "").Trim();
+                    var vnStatus = MapStatus(o.TrangThai);
                     var pm = (o.PhuongThucThanhToan ?? "").Trim();
-                    var ps = (o.TrangThaiThanhToan ?? "").Trim();
                     var isTransfer = string.Equals(pm, "Chuyen_khoan", StringComparison.OrdinalIgnoreCase)
                                      || string.Equals(pm, "ChuyenKhoan", StringComparison.OrdinalIgnoreCase)
                                      || pm.Contains("bank", StringComparison.OrdinalIgnoreCase)
                                      || pm.Contains("qr", StringComparison.OrdinalIgnoreCase);
-                    var isPaid = string.Equals(ps, "Da_thanh_toan", StringComparison.OrdinalIgnoreCase);
 
-                    <tr>
+                    var badgeClass = vnStatus switch
+                    {
+                        "Chờ xử lý" => "badge-warning",
+                        "Đang xử lý" => "badge-info",
+                        "Đang giao" => "badge-primary",
+                        "Hoàn tất" => "badge-success",
+                        "Đã hủy" => "badge-danger",
+                        _ => "badge-warning"
+                    };
+                    var nextStep = vnStatus switch
+                    {
+                        "Chờ xử lý" => "Đang xử lý",
+                        "Đang xử lý" => "Đang giao",
+                        "Đang giao" => "Hoàn tất",
+                        _ => ""
+                    };
+                    var nextLabel = vnStatus switch
+                    {
+                        "Chờ xử lý" => "✓ Xác nhận đơn",
+                        "Đang xử lý" => "🚚 Giao vận chuyển",
+                        "Đang giao" => "✓ Hoàn tất đơn",
+                        _ => ""
+                    };
+
+                    <tr data-status="@vnStatus">
                         <td>
                             <a href="/Shop/Invoice/@o.MaDonHang" target="_blank" class="order-code-link">@o.MaDonHang</a>
                         </td>
                         <td>
-                            <div class="customer-cell">
-                                <strong>@o.TenNguoiNhan</strong>
-                                <span>@o.DienThoaiNhan</span>
-                            </div>
+                            <strong>@o.TenNguoiNhan</strong><br>
+                            <small style="color:#6b7280">@o.DienThoaiNhan</small>
                         </td>
                         <td>@o.ThoiGianTao.ToString("dd/MM/yyyy HH:mm")</td>
-                        <td>@o.TongThanhToan.ToString("N0") đ</td>
+                        <td><strong>@o.TongThanhToan.ToString("N0") đ</strong></td>
                         <td>
-                            <div class="pay-stack">
-                                <span class="pay-badge">@pm</span>
-                                @if (isTransfer)
+                            <span class="payment-pill @(o.TrangThaiThanhToan == "Da_thanh_toan" ? "paid" : "cod")">
+                                @(o.TrangThaiThanhToan == "Da_thanh_toan" ? "Đã thanh toán" : o.PhuongThucThanhToan)
+                            </span>
+                        </td>
+                        <td>
+                            <span class="badge @badgeClass">@vnStatus</span>
+                        </td>
+                        <td>
+                            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                                @if (!string.IsNullOrEmpty(nextStep))
                                 {
-                                    if (isPaid)
-                                    {
-                                        <span class="pay-sub-paid">Đã xác nhận CK</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="pay-sub-unpaid">Chờ xác nhận CK</span>
-                                    }
+                                    <form method="post" action="/Management/UpdateOrderStatus" class="m-0">
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@o.Id" />
+                                        <input type="hidden" name="status" value="@nextStep" />
+                                        <button type="submit" class="btn-quick-step">@nextLabel</button>
+                                    </form>
                                 }
+                                <form method="post" action="/Management/UpdateOrderStatus" style="display:flex;gap:6px;align-items:center;margin:0;">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@o.Id" />
+                                    <select name="status" class="status-select order-status">
+                                        <option value="Chờ xử lý" selected="@(vnStatus == "Chờ xử lý")">Chờ xử lý</option>
+                                        <option value="Đang xử lý" selected="@(vnStatus == "Đang xử lý")">Đang xử lý</option>
+                                        <option value="Đang giao" selected="@(vnStatus == "Đang giao")">Đang giao</option>
+                                        <option value="Hoàn tất" selected="@(vnStatus == "Hoàn tất")">Hoàn tất</option>
+                                        <option value="Đã hủy" selected="@(vnStatus == "Đã hủy")">Đã hủy</option>
+                                    </select>
+                                    <button type="submit" class="icon-button" style="padding:5px 12px;border-radius:8px;">Lưu</button>
+                                </form>
                             </div>
                         </td>
-                        <td>
-                            <form method="post" asp-action="UpdateOrderStatus" asp-controller="Management" class="status-form-inline">
-                                @Html.AntiForgeryToken()
-                                <input type="hidden" name="id" value="@o.Id" />
-                                <select name="status" class="status-select st-@st" onchange="this.className='status-select st-' + this.value">
-                                    <option value="Cho_xac_nhan" selected="@(string.Equals(st, "Cho_xac_nhan", StringComparison.OrdinalIgnoreCase))">Chờ xác nhận</option>
-                                    <option value="Da_xac_nhan" selected="@(string.Equals(st, "Da_xac_nhan", StringComparison.OrdinalIgnoreCase))">Đã xác nhận</option>
-                                    <option value="Dang_giao" selected="@(string.Equals(st, "Dang_giao", StringComparison.OrdinalIgnoreCase))">Đang giao</option>
-                                    <option value="Da_giao" selected="@(string.Equals(st, "Da_giao", StringComparison.OrdinalIgnoreCase))">Hoàn tất</option>
-                                    <option value="Da_huy" selected="@(string.Equals(st, "Da_huy", StringComparison.OrdinalIgnoreCase))">Đã hủy</option>
-                                </select>
-                                <button type="submit" class="act-btn act-save">Lưu</button>
-                            </form>
-                        </td>
-                        <td>
+                        <td class="text-end">
                             <div class="act-group">
                                 @if (isTransfer)
                                 {
-                                    <a asp-action="Payments" asp-controller="Management" asp-route-search="@o.MaDonHang" class="act-btn act-track-pay">
+                                    <a asp-action="Payments" asp-controller="Management" asp-route-search="@o.MaDonHang" class="act-track-pay">
                                         💳 Theo dõi TT
                                     </a>
                                 }
@@ -342,5 +254,37 @@
             </tbody>
         </table>
     </div>
-    <div class="table-footer"><span>Tổng cộng @Model.Count đơn hàng</span></div>
 </section>
+
+@section Scripts {
+    <script>
+        (function () {
+            const tabs = document.querySelectorAll('#orderTabs .filter-tab');
+            const searchInput = document.getElementById('orderSearchInput');
+            const rows = document.querySelectorAll('#ordersTable tbody tr');
+            let currentStatus = 'ALL';
+
+            function filterOrders() {
+                const keyword = (searchInput?.value || '').toLowerCase().trim();
+                rows.forEach(row => {
+                    const status = row.getAttribute('data-status') || '';
+                    const text = row.innerText.toLowerCase();
+                    const matchStatus = currentStatus === 'ALL' || status === currentStatus;
+                    const matchKeyword = !keyword || text.includes(keyword);
+                    row.style.display = (matchStatus && matchKeyword) ? '' : 'none';
+                });
+            }
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    tabs.forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentStatus = tab.getAttribute('data-filter');
+                    filterOrders();
+                });
+            });
+
+            searchInput?.addEventListener('input', filterOrders);
+        })();
+    </script>
+}

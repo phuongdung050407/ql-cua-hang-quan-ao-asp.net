@@ -1,14 +1,13 @@
 @using System.Text.Json
 @using ShopProject.Controllers
-@using ShopProject.Models.Entities
 @model List<ShopProject.Models.ProductViewModel>
 @{
     ViewData["Title"] = "Quản lý sản phẩm";
-    var categories = ViewBag.Categories as List<DanhMuc> ?? new();
+    var categories = ViewBag.Categories as List<ShopProject.Models.DanhMuc> ?? new();
+    var sizes = ViewBag.Sizes as List<ShopProject.Models.KichThuoc> ?? new();
+    var colors = ViewBag.Colors as List<ShopProject.Models.MauSac> ?? new();
     var categorySizeTypeMap = ViewBag.CategorySizeTypeMap as Dictionary<int, string> ?? new();
-    var sizes = ViewBag.Sizes as List<KichThuoc> ?? new();
     var sizeGroupMap = ViewBag.SizeGroupMap as Dictionary<int, string> ?? new();
-    var colors = ViewBag.Colors as List<MauSac> ?? new();
     var variantMap = ViewBag.ProductVariants as Dictionary<int, List<ProductVariantInfo>> ?? new();
     var pricingAdvices = ViewBag.PricingAdvices as Dictionary<int, ProductTrendAdvice> ?? new();
     var productMeta = ViewBag.ProductMeta;
@@ -29,11 +28,68 @@
 }
 
 <style>
+    .management-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 10px 12px;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.03);
+    }
+    .management-toolbar .filter-search {
+        flex: 1 1 260px;
+        min-width: 220px;
+        height: 38px;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0 12px;
+        border-radius: 9px;
+        border: 1px solid #cbd5e1;
+        background: #f8fafc;
+        color: #64748b;
+        transition: all 0.15s ease;
+    }
+    .management-toolbar .filter-search:focus-within {
+        background: #ffffff;
+        border-color: #4f46e5;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.12);
+    }
+    .management-toolbar .filter-search input {
+        border: 0;
+        background: transparent;
+        outline: none;
+        width: 100%;
+        height: 100%;
+        font-size: 13px;
+        color: #0f172a;
+    }
+    .management-toolbar select {
+        height: 38px;
+        min-width: 170px;
+        padding: 0 30px 0 12px;
+        border-radius: 9px;
+        border: 1px solid #cbd5e1;
+        background-color: #ffffff;
+        color: #1e293b;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .management-toolbar select:hover,
+    .management-toolbar select:focus {
+        border-color: #4f46e5;
+        outline: none;
+    }
     .prod-cell { display: flex; align-items: center; gap: 12px; }
     .prod-cell img { width: 44px; height: 44px; border-radius: 10px; object-fit: cover; border: 1px solid #e2e8f0; flex-shrink: 0; }
     .stock-summary-box { display: flex; flex-direction: column; gap: 5px; }
     .stock-total-line { font-size: 13px; font-weight: 700; color: #0f172a; }
-    .stock-total-line span { font-weight: 500; color: #64748b; font-size: 12px; }
     .variant-chip-list { display: flex; flex-wrap: wrap; gap: 5px; }
     .v-chip {
         display: inline-flex; align-items: center; gap: 4px;
@@ -213,7 +269,7 @@
         <h3 style="margin:0">Thêm sản phẩm mới & Thiết lập lợi nhuận</h3>
         <button type="button" class="act-btn" onclick="closeAllProdPanels()">✕</button>
     </div>
-    <form method="post" asp-action="CreateProduct" asp-controller="Management" class="form-grid-admin">
+    <form id="create-product-form" method="post" asp-action="CreateProduct" asp-controller="Management" class="form-grid-admin">
         @Html.AntiForgeryToken()
         <label>Tên sản phẩm
             <input name="tenSanPham" required placeholder="Nhập tên sản phẩm" />
@@ -230,10 +286,10 @@
         <label>Giá gốc / Giá nhập (VNĐ)
             <input type="number" name="giaGoc" id="create-cost" min="1000" step="1000" required oninput="recalcCreatePricing('margin')" />
         </label>
-        <label>Tỷ lệ lợi nhuận (%)
-            <input type="number" name="tyLeLoiNhuan" id="create-margin" min="0" max="500" step="0.5" required oninput="recalcCreatePricing('margin')" />
+        <label>Tỷ lệ lợi nhuận (%) — tối thiểu 0%
+            <input type="number" name="tyLeLoiNhuan" id="create-margin" min="0" max="500" step="0.5" value="20" required oninput="recalcCreatePricing('margin')" />
         </label>
-        <label>Giá bán ra (VNĐ)
+        <label>Giá bán ra (VNĐ) — tối thiểu bằng giá gốc
             <input type="number" name="giaBan" id="create-price" min="1000" step="1000" required oninput="recalcCreatePricing('price')" />
         </label>
         <label>Tồn kho ban đầu
@@ -274,9 +330,10 @@
 
         <div class="profit-estimator-box">
             <div>
-                <div style="font-size:12.5px;font-weight:700;color:#3730a3;margin-bottom:6px">📊 Ước tính lợi nhuận bán hàng</div>
+                <div style="font-size:12.5px;font-weight:700;color:#3730a3;margin-bottom:6px">📊 Ước tính lợi nhuận bán hàng (luôn &ge; 0%)</div>
                 <div class="margin-presets">
                     <span style="font-size:12px;color:#64748b">Mức lợi nhuận nhanh:</span>
+                    <button type="button" class="preset-chip" onclick="setCreateMargin(0)">0% (Hòa vốn)</button>
                     <button type="button" class="preset-chip" onclick="setCreateMargin(20)">+20%</button>
                     <button type="button" class="preset-chip" onclick="setCreateMargin(35)">+35%</button>
                     <button type="button" class="preset-chip" onclick="setCreateMargin(50)">+50%</button>
@@ -297,6 +354,7 @@
                     <strong id="est-create-batch-profit" style="color:#4f46e5">0 đ</strong>
                 </div>
             </div>
+            <div id="create-profit-warning" hidden style="width:100%;font-size:12px;font-weight:600;color:#b45309"></div>
         </div>
 
         <div style="display:flex;align-items:flex-end">
@@ -311,7 +369,7 @@
         <h3 style="margin:0">Chỉnh sửa sản phẩm, giá bán & tỷ lệ lợi nhuận</h3>
         <button type="button" class="act-btn" onclick="closeAllProdPanels()">✕</button>
     </div>
-    <form method="post" asp-action="EditProduct" asp-controller="Management" class="form-grid-admin">
+    <form id="edit-product-form" method="post" asp-action="EditProduct" asp-controller="Management" class="form-grid-admin">
         @Html.AntiForgeryToken()
         <input type="hidden" name="id" id="edit-prod-id" />
         <label>Tên sản phẩm
@@ -328,10 +386,10 @@
         <label>Giá gốc / Giá nhập (VNĐ)
             <input type="number" name="giaGoc" id="edit-prod-cost" min="1000" step="1000" required oninput="recalcEditPricing('margin')" />
         </label>
-        <label>Tỷ lệ lợi nhuận (%)
+        <label>Tỷ lệ lợi nhuận (%) — tối thiểu 0%
             <input type="number" name="tyLeLoiNhuan" id="edit-prod-margin" min="0" max="500" step="0.5" required oninput="recalcEditPricing('margin')" />
         </label>
-        <label>Giá bán ra (VNĐ)
+        <label>Giá bán ra (VNĐ) — tối thiểu bằng giá gốc
             <input type="number" name="giaBan" id="edit-prod-price" min="1000" step="1000" required oninput="recalcEditPricing('price')" />
         </label>
         <label>URL ảnh đại diện
@@ -348,6 +406,7 @@
             <div style="display:flex;gap:8px">
                 <button type="submit" class="primary-button">Lưu thay đổi</button>
             </div>
+            <div id="edit-profit-warning" hidden style="width:100%;font-size:12px;font-weight:600;color:#b45309"></div>
         </div>
     </form>
 </section>
@@ -431,6 +490,7 @@
         <div class="trend-cards-grid">
             @foreach (var adv in adviceList.Take(6))
             {
+                var safeMargin = Math.Max(0m, adv.SuggestedMargin);
                 <div class="trend-card @(adv.TrendType == "hot" ? "is-hot" : "is-slow")">
                     <div>
                         <div style="display:flex;justify-content:space-between;align-items:center;gap:6px;margin-bottom:4px">
@@ -445,9 +505,9 @@
                         <form method="post" asp-action="ApplyProfitSuggestion" asp-controller="Management" style="display:inline">
                             @Html.AntiForgeryToken()
                             <input type="hidden" name="id" value="@adv.ProductId" />
-                            <input type="hidden" name="newMarginPercent" value="@adv.SuggestedMargin" />
+                            <input type="hidden" name="newMarginPercent" value="@safeMargin" />
                             <button type="submit" class="act-btn act-variant">
-                                ✓ Đổi lãi @adv.SuggestedMargin.ToString("0.#")% (@adv.SuggestedPrice.ToString("N0") đ)
+                                ✓ Đổi lãi @safeMargin.ToString("0.#")% (@adv.SuggestedPrice.ToString("N0") đ)
                             </button>
                         </form>
 
@@ -695,67 +755,122 @@
         }
     });
 
-    window.addEventListener('DOMContentLoaded', () => {
-        onCreateCategoryChange();
-        Object.keys(PRODUCT_META).forEach(id => {
-            const el = document.getElementById('row-cost-info-' + id);
-            const m = PRODUCT_META[id];
-            if (el && m) {
-                el.innerHTML = `Gốc: <b>${fmtVnd(m.GiaGoc)}</b><br><span style="color:#15803d;font-weight:600">+${m.TyLeLoiNhuan}% (+${fmtVnd(m.LoiNhuanDonVi)})</span>`;
-            }
-        });
-    });
+    function clampNonNegativePricing(costEl, marginEl, priceEl, warnElId, source) {
+        const cost = Math.max(0, parseFloat(costEl.value) || 0);
+        let margin = parseFloat(marginEl.value);
+        let price = parseFloat(priceEl.value);
+        if (Number.isNaN(margin)) margin = 0;
+        if (Number.isNaN(price)) price = 0;
 
-    function recalcCreatePricing(source) {
-        const cost = parseFloat(document.getElementById('create-cost').value) || 0;
-        const marginEl = document.getElementById('create-margin');
-        const priceEl = document.getElementById('create-price');
-        const qty = parseInt(document.getElementById('create-qty').value) || 0;
+        let warningText = '';
 
-        let margin = parseFloat(marginEl.value) || 0;
-        let price = parseFloat(priceEl.value) || 0;
+        if (margin < 0) {
+            margin = 0;
+            marginEl.value = 0;
+            warningText = 'Tỷ lệ lợi nhuận không được âm (đã tự đặt về 0%).';
+        }
 
         if (source === 'margin') {
             price = Math.round((cost * (1 + margin / 100)) / 1000) * 1000;
+            if (cost > 0 && price < cost) {
+                price = Math.ceil(cost / 1000) * 1000;
+            }
             priceEl.value = price;
-        } else if (source === 'price' && cost > 0) {
-            margin = Math.round(((price - cost) * 100 / cost) * 10) / 10;
-            marginEl.value = margin;
+        } else if (source === 'price') {
+            if (cost > 0 && price < cost) {
+                price = Math.ceil(cost / 1000) * 1000;
+                priceEl.value = price;
+                margin = 0;
+                marginEl.value = 0;
+                warningText = 'Giá bán không được thấp hơn giá gốc (đã tự điều chỉnh bằng giá gốc).';
+            } else if (cost > 0) {
+                margin = Math.max(0, Math.round(((price - cost) * 100 / cost) * 10) / 10);
+                marginEl.value = margin;
+            }
         }
 
-        const unitProfit = price - cost;
+        const warnEl = document.getElementById(warnElId);
+        if (warnEl) {
+            warnEl.textContent = warningText;
+            warnEl.hidden = !warningText;
+        }
+
+        return { cost, margin, price };
+    }
+
+    function recalcCreatePricing(source) {
+        const costEl = document.getElementById('create-cost');
+        const marginEl = document.getElementById('create-margin');
+        const priceEl = document.getElementById('create-price');
+        const qty = Math.max(0, parseInt(document.getElementById('create-qty').value) || 0);
+
+        const { cost, price } = clampNonNegativePricing(
+            costEl, marginEl, priceEl, 'create-profit-warning', source
+        );
+
+        const unitProfit = Math.max(0, price - cost);
         const revMargin = price > 0 ? ((unitProfit / price) * 100).toFixed(1) : '0.0';
         const batchProfit = unitProfit * qty;
 
-        document.getElementById('est-create-unit-profit').textContent = (unitProfit >= 0 ? '+' : '') + fmtVnd(unitProfit);
+        document.getElementById('est-create-unit-profit').textContent = '+' + fmtVnd(unitProfit);
         document.getElementById('est-create-rev-margin').textContent = revMargin + '%';
-        document.getElementById('est-create-batch-profit').textContent = (batchProfit >= 0 ? '+' : '') + fmtVnd(batchProfit);
+        document.getElementById('est-create-batch-profit').textContent = '+' + fmtVnd(batchProfit);
     }
 
     function setCreateMargin(pct) {
-        document.getElementById('create-margin').value = pct;
+        document.getElementById('create-margin').value = Math.max(0, pct);
         recalcCreatePricing('margin');
     }
 
     function recalcEditPricing(source) {
-        const cost = parseFloat(document.getElementById('edit-prod-cost').value) || 0;
+        const costEl = document.getElementById('edit-prod-cost');
         const marginEl = document.getElementById('edit-prod-margin');
         const priceEl = document.getElementById('edit-prod-price');
 
-        let margin = parseFloat(marginEl.value) || 0;
-        let price = parseFloat(priceEl.value) || 0;
+        const { cost, price } = clampNonNegativePricing(
+            costEl, marginEl, priceEl, 'edit-profit-warning', source
+        );
 
-        if (source === 'margin') {
-            price = Math.round((cost * (1 + margin / 100)) / 1000) * 1000;
-            priceEl.value = price;
-        } else if (source === 'price' && cost > 0) {
-            margin = Math.round(((price - cost) * 100 / cost) * 10) / 10;
-            marginEl.value = margin;
-        }
-
-        const unitProfit = price - cost;
-        document.getElementById('est-edit-unit-profit').textContent = (unitProfit >= 0 ? '+' : '') + fmtVnd(unitProfit);
+        const unitProfit = Math.max(0, price - cost);
+        document.getElementById('est-edit-unit-profit').textContent = '+' + fmtVnd(unitProfit);
     }
+
+    window.addEventListener('DOMContentLoaded', () => {
+        onCreateCategoryChange();
+        recalcCreatePricing('margin');
+
+        Object.keys(PRODUCT_META).forEach(id => {
+            const el = document.getElementById('row-cost-info-' + id);
+            const m = PRODUCT_META[id];
+            if (el && m) {
+                const safePct = Math.max(0, Number(m.TyLeLoiNhuan) || 0);
+                const safeUnit = Math.max(0, Number(m.LoiNhuanDonVi) || 0);
+                el.innerHTML = `Gốc: <b>${fmtVnd(m.GiaGoc)}</b><br><span style="color:#15803d;font-weight:600">+${safePct}% (+${fmtVnd(safeUnit)})</span>`;
+            }
+        });
+
+        document.getElementById('create-product-form')?.addEventListener('submit', (e) => {
+            recalcCreatePricing('price');
+            const cost = parseFloat(document.getElementById('create-cost').value) || 0;
+            const margin = parseFloat(document.getElementById('create-margin').value) || 0;
+            const price = parseFloat(document.getElementById('create-price').value) || 0;
+            if (margin < 0 || price < cost) {
+                e.preventDefault();
+                alert('Tỷ lệ lợi nhuận không được âm và giá bán phải lớn hơn hoặc bằng giá gốc.');
+            }
+        });
+
+        document.getElementById('edit-product-form')?.addEventListener('submit', (e) => {
+            recalcEditPricing('price');
+            const cost = parseFloat(document.getElementById('edit-prod-cost').value) || 0;
+            const margin = parseFloat(document.getElementById('edit-prod-margin').value) || 0;
+            const price = parseFloat(document.getElementById('edit-prod-price').value) || 0;
+            if (margin < 0 || price < cost) {
+                e.preventDefault();
+                alert('Tỷ lệ lợi nhuận không được âm và giá bán phải lớn hơn hoặc bằng giá gốc.');
+            }
+        });
+    });
 
     function closeAllProdPanels() {
         hideAllColorPopovers();
@@ -781,7 +896,7 @@
         document.getElementById('edit-prod-name').value = name;
         if (meta.DanhMucId) document.getElementById('edit-prod-cat').value = meta.DanhMucId;
         document.getElementById('edit-prod-cost').value = meta.GiaGoc ?? '';
-        document.getElementById('edit-prod-margin').value = meta.TyLeLoiNhuan ?? '';
+        document.getElementById('edit-prod-margin').value = Math.max(0, Number(meta.TyLeLoiNhuan) || 0);
         document.getElementById('edit-prod-price').value = meta.GiaBan ?? '';
         document.getElementById('edit-prod-img').value = meta.Image ?? '';
         document.getElementById('edit-prod-desc').value = meta.MoTa ?? '';

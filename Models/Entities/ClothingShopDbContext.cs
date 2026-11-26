@@ -10,7 +10,6 @@ public partial class ClothingShopDbContext : DbContext
         : base(options)
     {
     }
-    public virtual DbSet<TinhThanh> TinhThanhs { get; set; }
     public virtual DbSet<BannerKhuyenMai> BannerKhuyenMais { get; set; }
 
     public virtual DbSet<BienTheSanPham> BienTheSanPhams { get; set; }
@@ -335,9 +334,6 @@ public partial class ClothingShopDbContext : DbContext
             entity.Property(e => e.ThoiGianTao)
                 .HasDefaultValueSql("(sysdatetime())")
                 .HasColumnName("thoi_gian_tao");
-            entity.Property(e => e.TinhThanh)
-                .HasMaxLength(100)
-                .HasColumnName("tinh_thanh");
 
             entity.HasOne(d => d.NguoiDung).WithOne(p => p.DiaChi)
                 .HasForeignKey<DiaChi>(d => d.NguoiDungId)
