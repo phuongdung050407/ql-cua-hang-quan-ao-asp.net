@@ -1,35 +1,412 @@
-@model List<ShopProject.Models.DanhMuc>
+@model List<CategoryViewModel>
 @{
     ViewData["Title"] = "Danh mục";
+    var metaMap = ViewBag.CategoryMeta as System.Collections.IDictionary;
+    var iconOptions = new[]
+    {
+        ("👕", "Áo thun", "LETTER"),
+        ("👔", "Áo sơ mi", "LETTER"),
+        ("🧥", "Áo khoác", "LETTER"),
+        ("👖", "Quần", "LETTER"),
+        ("👗", "Váy đầm", "LETTER"),
+        ("👟", "Giày dép", "SHOE_ASIAN"),
+        ("👜", "Túi xách", "ACCESSORY"),
+        ("🧢", "Mũ / Nón", "ACCESSORY"),
+        ("🕶", "Phụ kiện", "ACCESSORY"),
+        ("🧦", "Đồ lót / Tất", "ACCESSORY"),
+        ("◫", "Khác", "LETTER")
+    };
 }
+
+<style>
+    .icon-picker {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 6px;
+    }
+    .icon-opt {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 11px;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #334155;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.15s ease;
+    }
+    .icon-opt:hover {
+        border-color: #cbd5e1;
+        background: #f8fafc;
+    }
+    .icon-opt.selected {
+        border-color: #4f46e5;
+        background: #eef2ff;
+        color: #3730a3;
+        box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
+    }
+    .icon-opt .ic-glyph {
+        font-size: 16px;
+        line-height: 1;
+    }
+    .cat-name-cell {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+    .cat-icon-box {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: #eef2ff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 19px;
+        flex-shrink: 0;
+    }
+    .size-type-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+    .st-letter { background: #eef2ff; color: #3730a3; }
+    .st-shoe { background: #ecfeff; color: #0e7490; }
+    .st-acc { background: #fef3c7; color: #92400e; }
+
+    .cat-actions {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: nowrap;
+    }
+    .cat-actions form {
+        margin: 0;
+        display: inline-flex;
+    }
+    .act-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 30px;
+        padding: 0 11px;
+        border-radius: 7px;
+        font-size: 12.5px;
+        font-weight: 500;
+        line-height: 1;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
+        color: #334155;
+    }
+    .act-btn:hover {
+        background: #f8fafc;
+        border-color: #cbd5e1;
+        color: #0f172a;
+    }
+    .act-disable {
+        color: #b45309;
+        border-color: #fde68a;
+        background: #fffbeb;
+    }
+    .act-disable:hover {
+        background: #fef3c7;
+        border-color: #fcd34d;
+    }
+    .act-enable {
+        color: #15803d;
+        border-color: #bbf7d0;
+        background: #f0fdf4;
+    }
+    .act-enable:hover {
+        background: #dcfce7;
+        border-color: #86efac;
+    }
+    .act-delete {
+        color: #dc2626;
+        border-color: #fecaca;
+        background: #fef2f2;
+    }
+    .act-delete:hover {
+        background: #fee2e2;
+        border-color: #fca5a5;
+        color: #b91c1c;
+    }
+</style>
+
 <div class="page-heading">
     <div>
         <p class="eyebrow">QUẢN LÝ</p>
         <h1>Danh mục sản phẩm</h1>
     </div>
-    <button type="button" class="primary-button" onclick="document.getElementById('addCatBox').style.display='block'">＋ Thêm danh mục</button>
+    <button type="button" class="primary-button" onclick="openCatBox('add-cat-box')">＋ Thêm danh mục</button>
 </div>
 
-<div id="addCatBox" class="panel" style="display:none;margin-bottom:20px;padding:18px">
-    <form method="post" action="/Management/AddCategory" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+@if (TempData["CategorySuccess"] != null)
+{
+    <p style="color:#15803d;margin-bottom:12px">@TempData["CategorySuccess"]</p>
+}
+@if (TempData["CategoryError"] != null)
+{
+    <p style="color:#b91c1c;margin-bottom:12px">@TempData["CategoryError"]</p>
+}
+
+<!-- 1. KHUNG THÊM DANH MỤC MỚI -->
+<section id="add-cat-box" class="panel" hidden style="margin-bottom:20px;padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Thêm danh mục mới</h3>
+        <button type="button" class="act-btn" onclick="closeAllCatBoxes()">✕</button>
+    </div>
+    <form method="post" asp-action="CreateCategory" asp-controller="Management" class="form-grid-admin" data-cat-form="add">
         @Html.AntiForgeryToken()
-        <input name="tenDanhMuc" placeholder="Tên danh mục mới (VD: Phụ kiện, Túi xách...)" required style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;min-width:260px" />
-        <input name="moTa" placeholder="Mô tả ngắn (không bắt buộc)" style="padding:10px 14px;border:1px solid #cbd5e1;border-radius:8px;min-width:260px" />
-        <button type="submit" class="primary-button">Lưu danh mục</button>
-        <button type="button" class="icon-button" onclick="document.getElementById('addCatBox').style.display='none'">Hủy</button>
-    </form>
-</div>
-
-<section class="category-grid">
-    @foreach (var c in Model)
-    {
-        <article class="category-card">
-            <b>◫</b>
-            <div>
-                <strong>@c.TenDanhMuc</strong>
-                <span>@c.SanPhams.Count sản phẩm</span>
+        <input type="hidden" name="icon" id="add-cat-icon" value="👕" />
+        <label>Tên danh mục
+            <input name="tenDanhMuc" id="add-cat-name" required placeholder="Ví dụ: Giày thể thao, Thắt lưng, Áo thun..." oninput="syncSizeFromText('add')" />
+        </label>
+        <label>Phân loại kích thước / đại lượng
+            <select name="loaiSize" id="add-cat-size-type" data-manual="0" onchange="this.dataset.manual='1'">
+                <option value="LETTER">Quần áo — Size chữ (XS, S, M, L, XL, XXL)</option>
+                <option value="SHOE_ASIAN">Giày dép — Size số châu Á (35 – 44)</option>
+                <option value="ACCESSORY">Phụ kiện — Không size / Đại lượng chọn</option>
+            </select>
+        </label>
+        <label style="grid-column: 1 / -1;">Mô tả
+            <input name="moTa" placeholder="Mô tả ngắn về nhóm sản phẩm..." />
+        </label>
+        <div style="grid-column: 1 / -1;">
+            <label>Chọn biểu tượng (Icon)</label>
+            <div class="icon-picker" id="add-icon-picker" data-target="add-cat-icon" data-sizetarget="add-cat-size-type" data-mode="add">
+                @foreach (var opt in iconOptions)
+                {
+                    <button type="button"
+                            class="icon-opt @(opt.Item1 == "👕" ? "selected" : "")"
+                            data-icon="@opt.Item1"
+                            data-size="@opt.Item3"
+                            onclick="selectCatIcon(this)">
+                        <span class="ic-glyph">@opt.Item1</span>
+                        <span>@opt.Item2</span>
+                    </button>
+                }
             </div>
-            <em>@(c.TrangThai ? "Đang hoạt động" : "Tạm ẩn")</em>
-        </article>
-    }
+        </div>
+        <div style="grid-column: 1 / -1; margin-top: 4px;">
+            <button type="submit" class="primary-button">Lưu danh mục</button>
+        </div>
+    </form>
 </section>
+
+<!-- 2. KHUNG SỬA DANH MỤC -->
+<section id="edit-cat-box" class="panel" hidden style="margin-bottom:20px;padding:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0">Chỉnh sửa danh mục</h3>
+        <button type="button" class="act-btn" onclick="closeAllCatBoxes()">✕</button>
+    </div>
+    <form method="post" asp-action="EditCategory" asp-controller="Management" class="form-grid-admin" data-cat-form="edit">
+        @Html.AntiForgeryToken()
+        <input type="hidden" name="id" id="edit-cat-id" />
+        <input type="hidden" name="icon" id="edit-cat-icon" value="👕" />
+        <label>Tên danh mục
+            <input name="tenDanhMuc" id="edit-cat-name" required oninput="syncSizeFromText('edit')" />
+        </label>
+        <label>Phân loại kích thước / đại lượng
+            <select name="loaiSize" id="edit-cat-size-type" data-manual="1" onchange="this.dataset.manual='1'">
+                <option value="LETTER">Quần áo — Size chữ (XS, S, M, L, XL, XXL)</option>
+                <option value="SHOE_ASIAN">Giày dép — Size số châu Á (35 – 44)</option>
+                <option value="ACCESSORY">Phụ kiện — Không size / Đại lượng chọn</option>
+            </select>
+        </label>
+        <label style="grid-column: 1 / -1;">Mô tả
+            <input name="moTa" id="edit-cat-desc" placeholder="Mô tả ngắn..." />
+        </label>
+        <div style="grid-column: 1 / -1;">
+            <label>Chọn biểu tượng (Icon)</label>
+            <div class="icon-picker" id="edit-icon-picker" data-target="edit-cat-icon" data-sizetarget="edit-cat-size-type" data-mode="edit">
+                @foreach (var opt in iconOptions)
+                {
+                    <button type="button"
+                            class="icon-opt"
+                            data-icon="@opt.Item1"
+                            data-size="@opt.Item3"
+                            onclick="selectCatIcon(this)">
+                        <span class="ic-glyph">@opt.Item1</span>
+                        <span>@opt.Item2</span>
+                    </button>
+                }
+            </div>
+        </div>
+        <div style="grid-column: 1 / -1; margin-top: 4px;">
+            <button type="submit" class="primary-button">Cập nhật danh mục</button>
+        </div>
+    </form>
+</section>
+
+<!-- 3. BẢNG DANH SÁCH DANH MỤC -->
+<section class="panel table-panel">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Tên danh mục</th>
+                    <th>Quy chuẩn size / đại lượng</th>
+                    <th>Mô tả</th>
+                    <th>Số sản phẩm</th>
+                    <th>Trạng thái</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var c in Model)
+                {
+                    dynamic? meta = metaMap != null && metaMap.Contains(c.Id) ? metaMap[c.Id] : null;
+                    string icon = meta?.Icon ?? "◫";
+                    string desc = meta?.Description ?? "";
+                    string sizeType = meta?.SizeType ?? "LETTER";
+
+                    var (pillClass, pillIcon, pillLabel) = sizeType switch
+                    {
+                        "SHOE_ASIAN" => ("st-shoe", "👟", "Giày dép • Size số châu Á"),
+                        "ACCESSORY" => ("st-acc", "👜", "Phụ kiện • Đại lượng / Không size"),
+                        _ => ("st-letter", "👕", "Quần áo • Size chữ")
+                    };
+
+                    bool isActive = c.Status == "Đang hoạt động";
+
+                    <tr>
+                        <td>
+                            <div class="cat-name-cell">
+                                <span class="cat-icon-box">@icon</span>
+                                <strong>@c.Name</strong>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="size-type-pill @pillClass">
+                                <span>@pillIcon</span>
+                                <span>@pillLabel</span>
+                            </span>
+                        </td>
+                        <td style="color:#64748b">@(string.IsNullOrEmpty(desc) ? "—" : desc)</td>
+                        <td>@c.ProductCount sản phẩm</td>
+                        <td>
+                            <span class="badge @(isActive ? "badge-success" : "badge-warning")">@c.Status</span>
+                        </td>
+                        <td>
+                            <div class="cat-actions">
+                                <button type="button" class="act-btn"
+                                        data-id="@c.Id"
+                                        data-name="@c.Name"
+                                        data-icon="@icon"
+                                        data-sizetype="@sizeType"
+                                        data-desc="@desc"
+                                        onclick="openEditCatModal(this)">Sửa</button>
+
+                                <form method="post" asp-action="ToggleCategory" asp-controller="Management">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@c.Id" />
+                                    <button type="submit" class="act-btn @(isActive ? "act-disable" : "act-enable")">
+                                        @(isActive ? "Tạm ẩn" : "Kích hoạt")
+                                    </button>
+                                </form>
+
+                                <form method="post" asp-action="DeleteCategory" asp-controller="Management"
+                                      onsubmit="return confirm('Bạn có chắc muốn xóa danh mục @c.Name?');">
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@c.Id" />
+                                    <button type="submit" class="act-btn act-delete">Xóa</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="table-footer"><span>Tổng cộng @Model.Count danh mục</span></div>
+</section>
+
+<script>
+    function closeAllCatBoxes() {
+        ['add-cat-box', 'edit-cat-box'].forEach(id => {
+            document.getElementById(id)?.setAttribute('hidden', '');
+        });
+    }
+
+    function openCatBox(boxId) {
+        const box = document.getElementById(boxId);
+        const isHidden = box.hasAttribute('hidden');
+        closeAllCatBoxes();
+        if (isHidden) {
+            if (boxId === 'add-cat-box') {
+                const sizeSelect = document.getElementById('add-cat-size-type');
+                if (sizeSelect) sizeSelect.dataset.manual = '0';
+            }
+            box.removeAttribute('hidden');
+            box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+    }
+
+    function detectSizeTypeFromText(text) {
+        const s = (text || '').toLowerCase();
+        if (/(giày|dép|sneaker|boot|sandal)/.test(s)) return 'SHOE_ASIAN';
+        if (/(túi|phụ kiện|mũ|nón|thắt lưng|kính|tất|vớ)/.test(s)) return 'ACCESSORY';
+        return 'LETTER';
+    }
+
+    function syncSizeFromText(mode) {
+        const nameInput = document.getElementById(mode === 'add' ? 'add-cat-name' : 'edit-cat-name');
+        const sizeSelect = document.getElementById(mode === 'add' ? 'add-cat-size-type' : 'edit-cat-size-type');
+        if (!nameInput || !sizeSelect || sizeSelect.dataset.manual === '1') return;
+
+        const guessed = detectSizeTypeFromText(nameInput.value);
+        sizeSelect.value = guessed;
+    }
+
+    function selectCatIcon(btn) {
+        const picker = btn.closest('.icon-picker');
+        const targetInput = document.getElementById(picker.dataset.target);
+        picker.querySelectorAll('.icon-opt').forEach(el => el.classList.remove('selected'));
+        btn.classList.add('selected');
+
+        const ic = btn.dataset.icon || '👕';
+        if (targetInput) targetInput.value = ic;
+
+        const sizeSelect = document.getElementById(picker.dataset.sizetarget);
+        if (sizeSelect && sizeSelect.dataset.manual !== '1') {
+            const mappedSize = btn.dataset.size || detectSizeTypeFromText(ic);
+            sizeSelect.value = mappedSize;
+        }
+    }
+
+    function openEditCatModal(btn) {
+        closeAllCatBoxes();
+        document.getElementById('edit-cat-id').value = btn.dataset.id;
+        document.getElementById('edit-cat-name').value = btn.dataset.name;
+        document.getElementById('edit-cat-desc').value = btn.dataset.desc;
+
+        const sizeSelect = document.getElementById('edit-cat-size-type');
+        sizeSelect.value = btn.dataset.sizetype || 'LETTER';
+        sizeSelect.dataset.manual = '1';
+
+        const currentIcon = btn.dataset.icon || '◫';
+        document.getElementById('edit-cat-icon').value = currentIcon;
+
+        const picker = document.getElementById('edit-icon-picker');
+        picker.querySelectorAll('.icon-opt').forEach(el => {
+            el.classList.toggle('selected', el.dataset.icon === currentIcon);
+        });
+
+        const box = document.getElementById('edit-cat-box');
+        box.removeAttribute('hidden');
+        box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+</script>

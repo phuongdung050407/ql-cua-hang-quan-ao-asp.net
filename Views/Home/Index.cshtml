@@ -1,7 +1,114 @@
-﻿@model DashboardViewModel
+﻿@model ShopProject.Models.DashboardViewModel
 @{
     ViewData["Title"] = User.IsInRole("Admin") ? "Tổng quan" : "Không gian làm việc";
+
+    int currentYear = ViewBag.CurrentYear ?? DateTime.Today.Year;
+    int currentMonth = ViewBag.CurrentMonth ?? DateTime.Today.Month;
+    var monthlyRevenues = ViewBag.MonthlyRevenues as List<decimal>;
+    var categoryBreakdown = ViewBag.CategoryBreakdown as IEnumerable<dynamic>;
+    var fallbackBars = new[] { 42, 58, 48, 72, 64, 82, 55, 76, 68, 92, 78, 86 };
+    var maxMonthRev = (monthlyRevenues != null && monthlyRevenues.Count == 12) ? monthlyRevenues.Max() : 0m;
 }
+    @{
+    decimal kpiTodayRevenue = ViewBag.TodayRevenue ?? Model.RevenueToday;
+    int kpiTodayOrders = ViewBag.TodayOrders ?? Model.OrdersToday;
+    int kpiLowStock = ViewBag.LowStockCount ?? Model.LowStockCount;
+    int kpiCustomers = ViewBag.CustomerCount ?? Model.CustomerCount;
+}
+
+<style>
+    .dash-heading-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        flex-shrink: 0;
+    }
+    .dash-btn-outline {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        height: 38px;
+        padding: 0 14px;
+        border-radius: 10px;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+        background: #ffffff;
+        color: #334155;
+        border: 1px solid #cbd5e1;
+        white-space: nowrap;
+    }
+    .dash-btn-outline:hover {
+        background: #f8fafc;
+        color: #0f172a;
+    }
+    .dash-bar-box {
+        display: grid;
+        grid-template-columns: repeat(12, 1fr);
+        align-items: end;
+        gap: 8px;
+        height: 215px;
+        padding: 24px 6px 8px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .dash-bar-col {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        height: 100%;
+        gap: 6px;
+        text-decoration: none;
+    }
+    .dash-bar-val {
+        font-size: 10px;
+        font-weight: 700;
+        color: #475569;
+        white-space: nowrap;
+    }
+    .dash-bar-stick {
+        width: 100%;
+        max-width: 28px;
+        border-radius: 7px 7px 3px 3px;
+        background: linear-gradient(180deg, #818cf8 0%, #4f46e5 100%);
+        min-height: 8px;
+    }
+    .dash-bar-col.is-current .dash-bar-stick {
+        background: linear-gradient(180deg, #4f46e5 0%, #312e81 100%);
+    }
+    .dash-bar-col.is-current .dash-bar-val,
+    .dash-bar-col.is-current .dash-bar-lbl {
+        color: #4f46e5;
+        font-weight: 800;
+    }
+    .dash-bar-lbl {
+        font-size: 11px;
+        color: #64748b;
+        font-weight: 600;
+    }
+    .cat-progress-item {
+        margin-bottom: 14px;
+    }
+    .cat-progress-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        font-size: 13px;
+        margin-bottom: 5px;
+        gap: 8px;
+    }
+    .cat-progress-track {
+        height: 8px;
+        background: #f1f5f9;
+        border-radius: 999px;
+        overflow: hidden;
+    }
+    .cat-progress-fill {
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #6366f1, #4f46e5);
+    }
+</style>
 
 @if (User.IsInRole("Admin"))
 {
@@ -11,57 +118,217 @@
             <p class="eyebrow">BẢNG ĐIỀU KHIỂN</p>
             <h1>Tổng quan cửa hàng</h1>
         </div>
-        <a asp-controller="Management" asp-action="Products" class="primary-button"><span>＋</span> Thêm sản phẩm</a>
+        <div class="dash-heading-actions">
+            <a asp-controller="Management" asp-action="Reports"
+               asp-route-year="@currentYear" asp-route-month="@currentMonth"
+               class="dash-btn-outline">
+                Báo cáo chi tiết
+            </a>
+            <a asp-controller="Management" asp-action="Products" class="primary-button">
+                <span>＋</span> Thêm sản phẩm
+            </a>
+        </div>
     </div>
 
-    <section class="stats-grid">
-        <article class="stat-card"><div class="stat-icon violet">↗</div><div><p>Doanh thu hôm nay</p><strong>@Model.RevenueToday.ToString("N0") đ</strong><span class="positive">+12.5% so với hôm qua</span></div></article>
-        <article class="stat-card"><div class="stat-icon blue">▣</div><div><p>Đơn hàng hôm nay</p><strong>@Model.OrdersToday</strong><span class="positive">+8 đơn mới</span></div></article>
-        <article class="stat-card"><div class="stat-icon amber">△</div><div><p>Sắp hết hàng</p><strong>@Model.LowStockCount</strong><span class="warning-text">Cần nhập kho</span></div></article>
-        <article class="stat-card"><div class="stat-icon green">♙</div><div><p>Khách hàng</p><strong>@Model.CustomerCount.ToString("N0")</strong><span class="positive">+32 tháng này</span></div></article>
-    </section>
 
+<section class="stats-grid">
+    <article class="stat-card">
+        <div class="stat-icon violet">↗</div>
+        <div>
+            <p>Doanh thu hôm nay</p>
+            <strong>@kpiTodayRevenue.ToString("N0") đ</strong>
+            <span class="positive">Cập nhật theo ngày @DateTime.Today.ToString("dd/MM")</span>
+        </div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon blue">▣</div>
+        <div>
+            <p>Đơn hàng hôm nay</p>
+            <strong>@kpiTodayOrders</strong>
+            <span class="positive">Đơn phát sinh hôm nay</span>
+        </div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon amber">△</div>
+        <div>
+            <p>Sắp hết hàng</p>
+            <strong>@kpiLowStock</strong>
+            <a asp-controller="Management" asp-action="Inventory" class="warning-text" style="text-decoration:none;font-weight:600">
+                Cần nhập kho →
+            </a>
+        </div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon green">♙</div>
+        <div>
+            <p>Khách hàng</p>
+            <strong>@kpiCustomers.ToString("N0")</strong>
+            <span class="positive">Tổng tài khoản khách hàng</span>
+        </div>
+    </article>
+</section>
     <section class="dashboard-grid">
         <article class="panel chart-panel">
-            <div class="panel-heading"><div><p class="eyebrow">Doanh thu</p><h2>@Model.RevenueMonth.ToString("N0") đ</h2></div><select><option>30 ngày qua</option><option>7 ngày qua</option></select></div>
-            <div class="chart-bars">
-                @{ var bars = new[] { 42, 58, 48, 72, 64, 82, 55, 76, 68, 92, 78, 86 }; }
-                @for (var i = 0; i < bars.Length; i++) { <div class="bar-wrap"><div class="bar" style="height:@bars[i]%"></div><small>@(i + 1)</small></div> }
+            <div class="panel-heading">
+                <div>
+                    <p class="eyebrow">DOANH THU THÁNG @currentMonth/@currentYear</p>
+                    <h2>@Model.RevenueMonth.ToString("N0") đ</h2>
+                </div>
+                <a asp-controller="Management" asp-action="Reports" style="font-size:12.5px;font-weight:600;color:#4f46e5;text-decoration:none">
+                    Xuất báo cáo PDF →
+                </a>
             </div>
+
+            @if (monthlyRevenues != null && monthlyRevenues.Count == 12)
+            {
+                <div class="dash-bar-box">
+                    @for (int m = 1; m <= 12; m++)
+                    {
+                        var rev = monthlyRevenues[m - 1];
+                        var pct = maxMonthRev > 0 ? (int)Math.Round(rev * 100m / maxMonthRev) : 0;
+                        var heightPx = rev > 0 ? Math.Max(18, (int)(pct * 1.35)) : 8;
+                        var shortLabel = rev >= 1_000_000m
+                            ? $"{(rev / 1_000_000m):0.##}tr"
+                            : (rev > 0 ? $"{(rev / 1_000m):0}K" : "0");
+
+                        <a asp-controller="Management" asp-action="Reports"
+                           asp-route-year="@currentYear" asp-route-month="@m"
+                           class="dash-bar-col @(m == currentMonth ? "is-current" : "")"
+                           title="Tháng @m/@currentYear: @rev.ToString("N0") đ">
+                            <span class="dash-bar-val">@shortLabel</span>
+                            <div class="dash-bar-stick" style="height:@(heightPx)px"></div>
+                            <span class="dash-bar-lbl">T@(m)</span>
+                        </a>
+                    }
+                </div>
+            }
+            else
+            {
+                <div class="chart-bars">
+                    @for (var i = 0; i < fallbackBars.Length; i++)
+                    {
+                        <div class="bar-wrap">
+                            <div class="bar" style="height:@fallbackBars[i]%"></div>
+                            <small>@(i + 1)</small>
+                        </div>
+                    }
+                </div>
+            }
         </article>
 
         <article class="panel category-panel">
-            <div class="panel-heading"><div><p class="eyebrow">Phân loại</p><h2>Danh mục bán chạy</h2></div></div>
-            <div class="category-list">
-                <div><span><i class="dot violet-dot"></i>Áo</span><strong>42%</strong></div>
-                <div class="progress"><b style="width:42%"></b></div>
-                <div><span><i class="dot blue-dot"></i>Quần</span><strong>28%</strong></div>
-                <div class="progress"><b class="blue-bar" style="width:28%"></b></div>
-                <div><span><i class="dot amber-dot"></i>Váy đầm</span><strong>18%</strong></div>
-                <div class="progress"><b class="amber-bar" style="width:18%"></b></div>
-                <div><span><i class="dot green-dot"></i>Phụ kiện</span><strong>12%</strong></div>
-                <div class="progress"><b class="green-bar" style="width:12%"></b></div>
+            <div class="panel-heading">
+                <div>
+                    <p class="eyebrow">PHÂN LOẠI (@currentYear)</p>
+                    <h2>Danh mục bán chạy</h2>
+                </div>
+                <a asp-controller="Management" asp-action="Categories" style="font-size:12.5px;font-weight:600;color:#4f46e5;text-decoration:none">
+                    Danh mục
+                </a>
             </div>
+
+            @if (categoryBreakdown != null && categoryBreakdown.Any())
+            {
+                foreach (var cat in categoryBreakdown.Take(5))
+                {
+                    int pct = cat.Percent;
+                    decimal cRev = cat.Revenue;
+                    <div class="cat-progress-item">
+                        <div class="cat-progress-head">
+                            <strong style="color:#0f172a">
+                                @cat.Category
+                                <small style="color:#64748b;font-weight:500">(@cRev.ToString("N0") đ)</small>
+                            </strong>
+                            <span style="font-weight:700;color:#4f46e5">@(pct)%</span>
+                        </div>
+                        <div class="cat-progress-track">
+                            <div class="cat-progress-fill" style="width:@(Math.Max(6, pct))%"></div>
+                        </div>
+                    </div>
+                }
+            }
+            else
+            {
+                <div class="category-list">
+                    <div><span><i class="dot violet-dot"></i>Áo</span><strong>42%</strong></div>
+                    <div class="progress"><b style="width:42%"></b></div>
+                    <div><span><i class="dot blue-dot"></i>Quần</span><strong>28%</strong></div>
+                    <div class="progress"><b class="blue-bar" style="width:28%"></b></div>
+                    <div><span><i class="dot amber-dot"></i>Váy đầm</span><strong>18%</strong></div>
+                    <div class="progress"><b class="amber-bar" style="width:18%"></b></div>
+                    <div><span><i class="dot green-dot"></i>Phụ kiện</span><strong>12%</strong></div>
+                    <div class="progress"><b class="green-bar" style="width:12%"></b></div>
+                </div>
+            }
         </article>
     </section>
 
     <section class="dashboard-grid lower-grid">
         <article class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">Sản phẩm</p><h2>Sản phẩm gần đây</h2></div><a asp-controller="Management" asp-action="Products">Xem tất cả</a></div>
-            <div class="table-wrap"><table><thead><tr><th>Sản phẩm</th><th>Danh mục</th><th>Giá</th><th>Tồn kho</th><th>Trạng thái</th></tr></thead><tbody>
-            @foreach (var product in Model.Products)
-            {
-                <tr><td><div class="product-cell"><img src="@product.Image" alt="@product.Name"><strong>@product.Name</strong></div></td><td>@product.Category</td><td>@product.Price.ToString("N0") đ</td><td>@product.Stock</td><td><span class="badge @(product.Status == "Sắp hết" ? "badge-warning" : product.Status == "Hết hàng" ? "badge-danger" : "badge-success")">@product.Status</span></td></tr>
-            }
-            </tbody></table></div>
+            <div class="panel-heading">
+                <div>
+                    <p class="eyebrow">SẢN PHẨM</p>
+                    <h2>Sản phẩm gần đây</h2>
+                </div>
+                <a asp-controller="Management" asp-action="Products">Xem tất cả</a>
+            </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Sản phẩm</th>
+                            <th>Danh mục</th>
+                            <th>Giá</th>
+                            <th>Tồn kho</th>
+                            <th>Trạng thái</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var product in Model.Products)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="product-cell">
+                                        <img src="@product.Image" alt="@product.Name">
+                                        <strong>@product.Name</strong>
+                                    </div>
+                                </td>
+                                <td>@product.Category</td>
+                                <td>@product.Price.ToString("N0") đ</td>
+                                <td>@product.Stock</td>
+                                <td>
+                                    <span class="badge @(product.Status == "Sắp hết" ? "badge-warning" : product.Status == "Hết hàng" ? "badge-danger" : "badge-success")">
+                                        @product.Status
+                                    </span>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         </article>
 
         <article class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">Đơn hàng</p><h2>Đơn mới nhất</h2></div><a asp-controller="Management" asp-action="Orders">Xem tất cả</a></div>
+            <div class="panel-heading">
+                <div>
+                    <p class="eyebrow">ĐƠN HÀNG</p>
+                    <h2>Đơn mới nhất</h2>
+                </div>
+                <a asp-controller="Management" asp-action="Orders">Xem tất cả</a>
+            </div>
             <div class="order-list">
                 @foreach (var order in Model.RecentOrders)
                 {
-                    <div class="order-row"><div class="order-code"><strong>@order.Code</strong><span>@order.Customer</span></div><div class="order-meta"><strong>@order.Total.ToString("N0") đ</strong><span class="status-dot">@order.Status</span></div></div>
+                    <div class="order-row">
+                        <div class="order-code">
+                            <strong>@order.Code</strong>
+                            <span>@order.Customer</span>
+                        </div>
+                        <div class="order-meta">
+                            <strong>@order.Total.ToString("N0") đ</strong>
+                            <span class="status-dot">@order.Status</span>
+                        </div>
+                    </div>
                 }
             </div>
         </article>
@@ -81,22 +348,37 @@ else
     <section class="stats-grid" style="grid-template-columns: repeat(3, 1fr);">
         <article class="stat-card">
             <div class="stat-icon amber"><i class="bi bi-bag-plus"></i></div>
-            <div><p>Đơn hàng hôm nay</p><strong>@Model.OrdersToday</strong><span class="positive">Cần kiểm tra & xác nhận</span></div>
+            <div>
+                <p>Đơn hàng hôm nay</p>
+                <strong>@Model.OrdersToday</strong>
+                <span class="positive">Cần kiểm tra &amp; xác nhận</span>
+            </div>
         </article>
         <article class="stat-card">
             <div class="stat-icon blue"><i class="bi bi-box-seam"></i></div>
-            <div><p>Sản phẩm sắp hết hàng</p><strong>@Model.LowStockCount</strong><span class="warning-text">Báo kho bổ sung</span></div>
+            <div>
+                <p>Sản phẩm sắp hết hàng</p>
+                <strong>@Model.LowStockCount</strong>
+                <span class="warning-text">Báo kho bổ sung</span>
+            </div>
         </article>
         <article class="stat-card">
             <div class="stat-icon green"><i class="bi bi-tags"></i></div>
-            <div><p>Mẫu đang trưng bày</p><strong>@Model.Products.Count</strong><span class="positive">Sẵn sàng tư vấn khách</span></div>
+            <div>
+                <p>Mẫu đang trưng bày</p>
+                <strong>@Model.Products.Count</strong>
+                <span class="positive">Sẵn sàng tư vấn khách</span>
+            </div>
         </article>
     </section>
 
     <section class="dashboard-grid">
         <article class="panel">
             <div class="panel-heading">
-                <div><p class="eyebrow">ƯU TIÊN XỬ LÝ</p><h2>Đơn hàng cần chốt & giao</h2></div>
+                <div>
+                    <p class="eyebrow">ƯU TIÊN XỬ LÝ</p>
+                    <h2>Đơn hàng cần chốt &amp; giao</h2>
+                </div>
                 <a asp-controller="Management" asp-action="Orders">Mở bảng xử lý đơn →</a>
             </div>
             <div class="order-list">
@@ -118,7 +400,10 @@ else
 
         <article class="panel">
             <div class="panel-heading">
-                <div><p class="eyebrow">TRA CỨU NHANH</p><h2>Tồn kho tại cửa hàng</h2></div>
+                <div>
+                    <p class="eyebrow">TRA CỨU NHANH</p>
+                    <h2>Tồn kho tại cửa hàng</h2>
+                </div>
                 <a asp-controller="Management" asp-action="Inventory">Xem kho →</a>
             </div>
             <div class="order-list">

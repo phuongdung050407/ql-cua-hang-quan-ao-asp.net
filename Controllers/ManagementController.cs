@@ -6,6 +6,88 @@ using System.Security.Claims;
 
 namespace ShopProject.Controllers;
 
+public class SalesReportSnapshot
+{
+    public int SelectedMonth { get; set; }
+    public int SelectedYear { get; set; }
+    public string ReportCode { get; set; } = "";
+    public DateTime GeneratedAt { get; set; } = DateTime.Now;
+    public decimal MonthRevenue { get; set; }
+    public decimal YearRevenue { get; set; }
+    public decimal? RevenueGrowthPercent { get; set; }
+    public int MonthOrders { get; set; }
+    public int YearOrders { get; set; }
+    public int CompletedOrders { get; set; }
+    public int ShippingOrders { get; set; }
+    public int PendingOrders { get; set; }
+    public int CancelledOrders { get; set; }
+    public int NewCustomers { get; set; }
+    public decimal AvgOrder { get; set; }
+    public List<MonthlyBreakdownItem> MonthlyBreakdown { get; set; } = new();
+    public List<TopProductReportItem> TopProducts { get; set; } = new();
+    public List<CategorySalesReportItem> CategorySales { get; set; } = new();
+}
+
+public class MonthlyBreakdownItem
+{
+    public int Month { get; set; }
+    public decimal Revenue { get; set; }
+    public int OrderCount { get; set; }
+    public decimal AvgOrder => OrderCount > 0 ? Revenue / OrderCount : 0m;
+}
+public class TopProductReportItem
+{
+    public string Name { get; set; } = "";
+    public string ProductName { get; set; } = "";
+    public int Stock { get; set; }
+    public int SoldQuantity { get; set; }
+    public decimal Price { get; set; }
+}
+
+public class CategorySalesReportItem
+{
+    public string CategoryName { get; set; } = "";
+    public decimal Revenue { get; set; }
+    public int UnitsSold { get; set; }
+}
+
+public class SavedReportFileInfo
+{
+    public string FileName { get; set; } = "";
+    public string Url { get; set; } = "";
+    public long SizeKb { get; set; }
+    public DateTime CreatedAt { get; set; }
+}
+
+public class ProductVariantInfo
+{
+    public long Id { get; set; }
+    public int SanPhamId { get; set; }
+    public string Sku { get; set; } = "";
+    public int KichThuocId { get; set; }
+    public string Size { get; set; } = "";
+    public int MauSacId { get; set; }
+    public string Color { get; set; } = "";
+    public decimal Price { get; set; }
+    public int Stock { get; set; }
+    public int Reserved { get; set; }
+    public int Available { get; set; }
+    public bool TrangThai { get; set; }
+}
+
+public class ProductTrendAdvice
+{
+    public int ProductId { get; set; }
+    public string ProductName { get; set; } = "";
+    public string TrendType { get; set; } = "normal";
+    public string TrendLabel { get; set; } = "";
+    public string Summary { get; set; } = "";
+    public string ActionHint { get; set; } = "";
+    public decimal SuggestedMargin { get; set; }
+    public decimal SuggestedPrice { get; set; }
+    public int SuggestedDiscountPercent { get; set; }
+    public string SuggestedPromoCode { get; set; } = "";
+}
 [Authorize(Roles = "Admin,Employee")]
 public class ManagementController : Controller
 {
@@ -493,4 +575,5 @@ public class ManagementController : Controller
 
         return View();
     }
+    
 }

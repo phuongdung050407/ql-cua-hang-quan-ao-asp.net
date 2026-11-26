@@ -18,6 +18,55 @@ public class HomeController : Controller
 
     public async Task<IActionResult> Index()
     {
+        var year = DateTime.Today.Year;
+        var month = DateTime.Today.Month;
+
+        // 1. Doanh thu 12 tháng của năm hiện tại (loại trừ đơn đã hủy)
+        var validOrdersYear = await _context.DonHangs
+            .AsNoTracking()
+            .Where(o => o.ThoiGianTao.Year == year && o.TrangThai != "Da_huy")
+            .ToListAsync();
+
+        var monthlyRevenues = Enumerable.Range(1, 12)
+            .Select(m => validOrdersYear
+                .Where(o => o.ThoiGianTao.Month == m)
+                .Sum(o => o.TongThanhToan))
+            .ToList();
+
+        // 2. Doanh thu & tỷ lệ % theo danh mục trong năm hiện tại
+        var orderDetailsYear = await _context.DonHangChiTiets
+            .AsNoTracking()
+            .Include(ct => ct.DonHang)
+            .Include(ct => ct.BienThe)
+                .ThenInclude(bt => bt.SanPham)
+                    .ThenInclude(sp => sp.DanhMuc)
+            .Where(ct => ct.DonHang != null
+                    && ct.DonHang.ThoiGianTao.Year == year
+                    && ct.DonHang.TrangThai != "Da_huy")
+            .ToListAsync();
+
+        var totalCatRev = orderDetailsYear.Sum(ct => ct.ThanhTien ?? (ct.DonGia * ct.SoLuong));
+
+        var categoryBreakdown = orderDetailsYear
+            .GroupBy(ct => ct.BienThe?.SanPham?.DanhMuc?.TenDanhMuc ?? "Khác")
+            .Select(g =>
+            {
+                var rev = g.Sum(ct => ct.ThanhTien ?? (ct.DonGia * ct.SoLuong));
+                var pct = totalCatRev > 0 ? (int)Math.Round(rev * 100m / totalCatRev) : 0;
+                return new
+                {
+                    Category = g.Key,
+                    Revenue = rev,
+                    Percent = pct
+                };
+            })
+            .OrderByDescending(x => x.Revenue)
+            .ToList();
+
+        ViewBag.CurrentYear = year;
+        ViewBag.CurrentMonth = month;
+        ViewBag.MonthlyRevenues = monthlyRevenues;
+        ViewBag.CategoryBreakdown = categoryBreakdown;
         var today = DateTime.Today;
         var isAdmin = User.IsInRole("Admin");
 

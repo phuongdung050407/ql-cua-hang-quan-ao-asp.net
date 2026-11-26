@@ -42,11 +42,13 @@
                 <a class="nav-link @IsActive("Management", "Categories")" asp-controller="Management" asp-action="Categories">
                     <i class="bi bi-tags"></i><span>Danh mục</span>
                 </a>
+                <a class="nav-link @IsActive("Management", "Payments")" asp-controller="Management" asp-action="Payments">
+                    <i class="bi bi-credit-card"></i><span>Thanh toán CK</span>
+                </a>
             }
 
             <a class="nav-link @IsActive("Management", "Orders")" asp-controller="Management" asp-action="Orders">
                 <i class="bi bi-receipt"></i><span>Đơn đặt hàng</span>
-                <em class="nav-badge">8</em>
             </a>
 
             <a class="nav-link @IsActive("Management", "Inventory")" asp-controller="Management" asp-action="Inventory">

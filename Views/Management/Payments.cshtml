@@ -1,0 +1,203 @@
+﻿@model List<ShopProject.Models.DonHang>
+@{
+    ViewData["Title"] = "Quản lý thanh toán chuyển khoản";
+    var selectedPayStatus = (ViewBag.PayStatus as string ?? "").Trim();
+}
+
+<style>
+    .pay-page-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-bottom: 16px;
+    }
+    .order-code-link {
+        display: inline-block;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #4f46e5;
+        background: #f5f3ff;
+        border: 1px solid #e0e7ff;
+        padding: 4px 8px;
+        border-radius: 6px;
+        text-decoration: none;
+    }
+    .order-code-link:hover {
+        background: #eef2ff;
+        border-color: #c7d2fe;
+    }
+    .customer-cell {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+    .customer-cell strong { color: #0f172a; font-size: 13.5px; }
+    .customer-cell span { color: #64748b; font-size: 12.5px; }
+    .pay-badge-paid {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+        background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0;
+    }
+    .pay-badge-unpaid {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+        background: #fffbeb; color: #b45309; border: 1px solid #fde68a;
+    }
+    .pay-badge-failed {
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+        background: #fef2f2; color: #dc2626; border: 1px solid #fecaca;
+    }
+    .act-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+        height: 30px; padding: 0 11px; border-radius: 7px; font-size: 12.5px; font-weight: 600;
+        line-height: 1; white-space: nowrap; text-decoration: none; cursor: pointer;
+        border: 1px solid #e2e8f0; background: #ffffff; color: #334155;
+    }
+    .act-confirm {
+        color: #15803d; border-color: #86efac; background: #f0fdf4;
+    }
+    .act-confirm:hover {
+        background: #dcfce7; border-color: #4ade80;
+    }
+    .act-reset {
+        color: #b45309; border-color: #fde68a; background: #fffbeb;
+    }
+    .act-reset:hover {
+        background: #fef3c7;
+    }
+</style>
+
+<div class="pay-page-head">
+    <div>
+        <p class="eyebrow">TÀI CHÍNH & ĐỐI SOÁT</p>
+        <h1>Quản lý thanh toán chuyển khoản</h1>
+    </div>
+    <a asp-action="Orders" asp-controller="Management" class="act-btn">← Quay lại Đơn đặt hàng</a>
+</div>
+
+@if (TempData["PaySuccess"] != null)
+{
+    <p style="color:#15803d;margin-bottom:12px;font-weight:500">@TempData["PaySuccess"]</p>
+}
+@if (TempData["PayError"] != null)
+{
+    <p style="color:#b91c1c;margin-bottom:12px;font-weight:500">@TempData["PayError"]</p>
+}
+
+<div class="stats-grid people-stats">
+    <article class="stat-card">
+        <div class="stat-icon amber">◷</div>
+        <div><p>Chờ xác nhận CK</p><strong>@(ViewBag.UnpaidCount ?? 0)</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon green">✓</div>
+        <div><p>Đã nhận tiền CK</p><strong>@(ViewBag.PaidCount ?? 0)</strong></div>
+    </article>
+    <article class="stat-card">
+        <div class="stat-icon violet">₫</div>
+        <div><p>Tổng tiền đã nhận</p><strong>@(((decimal)(ViewBag.PaidAmount ?? 0m)).ToString("N0")) đ</strong></div>
+    </article>
+</div>
+
+<section class="panel table-panel">
+    <form method="get" asp-action="Payments" asp-controller="Management" class="management-toolbar">
+        <div class="filter-search">
+            ⌕ <input name="search" value="@ViewBag.Search" placeholder="Tìm mã đơn, khách hàng, SĐT, mã giao dịch...">
+        </div>
+        <select name="payStatus" onchange="this.form.submit()">
+            <option value="">Tất cả trạng thái TT</option>
+            <option value="Chua_thanh_toan" selected="@(selectedPayStatus == "Chua_thanh_toan")">Chờ xác nhận</option>
+            <option value="Da_thanh_toan" selected="@(selectedPayStatus == "Da_thanh_toan")">Đã thanh toán</option>
+            <option value="That_bai" selected="@(selectedPayStatus == "That_bai")">Thất bại / Hủy</option>
+        </select>
+    </form>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Mã đơn</th>
+                    <th>Khách hàng</th>
+                    <th>Thời gian tạo</th>
+                    <th>Số tiền</th>
+                    <th>Trạng thái thanh toán</th>
+                    <th>Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                @if (Model.Count == 0)
+                {
+                    <tr>
+                        <td colspan="6" style="text-align:center;color:#64748b;padding:24px">
+                            Không có đơn hàng chuyển khoản nào khớp với bộ lọc.
+                        </td>
+                    </tr>
+                }
+                else
+                {
+                    @foreach (var o in Model)
+                    {
+                        var ps = (o.TrangThaiThanhToan ?? "Chua_thanh_toan").Trim();
+                        var isPaid = string.Equals(ps, "Da_thanh_toan", StringComparison.OrdinalIgnoreCase);
+                        var isFailed = string.Equals(ps, "That_bai", StringComparison.OrdinalIgnoreCase);
+
+                        <tr>
+                            <td>
+                                <a href="/Shop/Invoice/@o.MaDonHang" target="_blank" class="order-code-link">@o.MaDonHang</a>
+                            </td>
+                            <td>
+                                <div class="customer-cell">
+                                    <strong>@o.TenNguoiNhan</strong>
+                                    <span>@o.DienThoaiNhan</span>
+                                </div>
+                            </td>
+                            <td>@o.ThoiGianTao.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td><strong>@o.TongThanhToan.ToString("N0") đ</strong></td>
+                            <td>
+                                @if (isPaid)
+                                {
+                                    <span class="pay-badge-paid">✓ Đã thanh toán</span>
+                                }
+                                else if (isFailed)
+                                {
+                                    <span class="pay-badge-failed">✕ Thất bại</span>
+                                }
+                                else
+                                {
+                                    <span class="pay-badge-unpaid">◷ Chờ xác nhận</span>
+                                }
+                            </td>
+                            <td>
+                                <div style="display:flex;gap:6px;align-items:center;flex-wrap:nowrap">
+                                    @if (!isPaid)
+                                    {
+                                        <form method="post" asp-action="ConfirmPayment" asp-controller="Management" style="display:inline;margin:0">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@o.Id" />
+                                            <button type="submit" class="act-btn act-confirm">✓ Xác nhận đã nhận tiền</button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <form method="post" asp-action="ResetPaymentStatus" asp-controller="Management" style="display:inline;margin:0">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@o.Id" />
+                                            <button type="submit" class="act-btn act-reset">↺ Đặt lại chờ TT</button>
+                                        </form>
+                                    }
+                                    <a href="/Shop/Invoice/@o.MaDonHang" target="_blank" class="act-btn">Hóa đơn</a>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </table>
+    </div>
+    <div class="table-footer"><span>Hiển thị @Model.Count giao dịch chuyển khoản</span></div>
+</section>
+

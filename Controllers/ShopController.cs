@@ -3,10 +3,15 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 using ShopProject.Models;
+using System.Data;
 using System.Security.Claims;
 using System.Text.Json;
-using System.Data;
+using PdfColors = QuestPDF.Helpers.Colors;
+using PdfDocument = QuestPDF.Fluent.Document;
 
 namespace ShopProject.Controllers;
 
@@ -243,7 +248,6 @@ public class ShopController : Controller
 
         ViewBag.Related = await GetRecommendedProducts(currentUserId, dbProduct.Id, dbProduct.DanhMucId, 4);
 
-        // Lấy danh sách đánh giá đã duyệt của sản phẩm từ bảng DanhGia
         ViewBag.Reviews = await _context.DanhGia
             .Include(r => r.NguoiDung)
             .Where(r => r.SanPhamId == dbProduct.Id && r.TrangThai == "Da_duyet")
@@ -272,7 +276,7 @@ public class ShopController : Controller
         return View(productVm);
     }
 
-    // 2B. NHẬN ĐÁNH GIÁ MỚI TỪ KHÁCH HÀNG (Khớp Trigger SQL: Chỉ đơn hàng trạng thái 'Da_giao' mới được đánh giá)
+    // 2B. NHẬN ĐÁNH GIÁ MỚI TỪ KHÁCH HÀNG
     [HttpPost]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> AddReview(int sanPhamId, int soSao, string noiDung)
@@ -284,7 +288,6 @@ public class ShopController : Controller
             return RedirectToAction(nameof(Login));
         }
 
-        // 1. Kiểm tra khách đã có đơn hàng ĐÃ GIAO ('Da_giao') chứa sản phẩm này chưa
         var donHangHopLe = await _context.DonHangs
             .Include(d => d.DonHangChiTiets)
                 .ThenInclude(ct => ct.BienThe)
@@ -300,7 +303,6 @@ public class ShopController : Controller
             return RedirectToAction(nameof(Detail), new { id = sanPhamId });
         }
 
-        // 2. Kiểm tra chống spam đánh giá nhiều lần cho cùng một đơn hàng
         var daDanhGia = await _context.DanhGia
             .AnyAsync(r => r.NguoiDungId == userId
                         && r.SanPhamId == sanPhamId
@@ -312,7 +314,6 @@ public class ShopController : Controller
             return RedirectToAction(nameof(Detail), new { id = sanPhamId });
         }
 
-        // 3. Lưu đánh giá hợp lệ vào CSDL
         var danhGia = new DanhGium
         {
             SanPhamId = sanPhamId,
@@ -402,7 +403,7 @@ public class ShopController : Controller
         }
     }
 
-    // 4. ĐĂNG NHẬP TỪ DATABASE 
+    // 4. ĐĂNG NHẬP TỪ DATABASE
     [HttpGet]
     public IActionResult Login(string? returnUrl = null)
     {
@@ -418,16 +419,16 @@ public class ShopController : Controller
         if (!ModelState.IsValid)
             return View(model);
 
-        var loginInput = model.Email.Trim();
+        var loginInput = (model.Email ?? string.Empty).Trim();
         var emailChuan = loginInput.ToLowerInvariant();
-        var password = model.Password;
+        var password = (model.Password ?? string.Empty).Trim();
 
-        // Tìm người dùng theo email_chuan hoặc ten_dang_nhap, trạng thái phải là Hoat_dong
         var user = await _context.NguoiDungs
             .Include(u => u.VaiTros)
             .FirstOrDefaultAsync(u =>
-                (u.Email.ToLower() == emailChuan || u.TenDangNhap == loginInput)
-                && u.TrangThai == "Hoat_dong");
+                (u.Email != null && u.Email.ToLower() == emailChuan)
+                || (u.EmailChuan != null && u.EmailChuan.ToLower() == emailChuan)
+                || (u.TenDangNhap != null && u.TenDangNhap.ToLower() == emailChuan));
 
         if (user == null)
         {
@@ -435,21 +436,34 @@ public class ShopController : Controller
             return View(model);
         }
 
+        var status = (user.TrangThai ?? string.Empty).Trim();
+        if (string.Equals(status, "Khoa", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "Bi_khoa", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(status, "Ngung_hoat_dong", StringComparison.OrdinalIgnoreCase))
+        {
+            ModelState.AddModelError("", "Tài khoản hiện đang bị khóa.");
+            return View(model);
+        }
+
         var hasher = new PasswordHasher<NguoiDung>();
         bool isValidPassword = false;
-        bool needsRehash = false;
+        var storedHash = (user.MatKhauHash ?? string.Empty).Trim();
 
-        if (!string.IsNullOrEmpty(user.MatKhauHash) && user.MatKhauHash.StartsWith("AQAAAA"))
+        if (!string.IsNullOrEmpty(storedHash))
         {
-            var verifyResult = hasher.VerifyHashedPassword(user, user.MatKhauHash, password);
-            isValidPassword = verifyResult != PasswordVerificationResult.Failed;
-            needsRehash = verifyResult == PasswordVerificationResult.SuccessRehashNeeded;
-        }
-        else
-        {
-            // Trường hợp mật khẩu chèn tay bằng SQL chưa được hash
-            isValidPassword = user.MatKhauHash == password;
-            needsRehash = isValidPassword;
+            if (storedHash.StartsWith("AQAAAA"))
+            {
+                var verifyResult = hasher.VerifyHashedPassword(user, storedHash, password);
+                isValidPassword = verifyResult != PasswordVerificationResult.Failed;
+            }
+            else if (storedHash.StartsWith("$2a$") || storedHash.StartsWith("$2b$") || storedHash.StartsWith("$2y$"))
+            {
+                isValidPassword = BCrypt.Net.BCrypt.Verify(password, storedHash);
+            }
+            else
+            {
+                isValidPassword = storedHash == password || storedHash == (model.Password ?? string.Empty);
+            }
         }
 
         if (!isValidPassword)
@@ -458,7 +472,6 @@ public class ShopController : Controller
             return View(model);
         }
 
-        // Nếu tài khoản có bản ghi trong bảng nhan_vien, kiểm tra trạng thái nghỉ việc
         var nhanVien = await _context.NhanViens
             .AsNoTracking()
             .FirstOrDefaultAsync(nv => nv.NguoiDungId == user.Id);
@@ -470,11 +483,10 @@ public class ShopController : Controller
         }
 
         var now = DateTime.Now;
-
-        // Cập nhật thoi_gian_cap_nhat theo quy ước SQL
         user.ThoiGianCapNhat = now;
+        if (string.IsNullOrWhiteSpace(user.TrangThai))
+            user.TrangThai = "Hoat_dong";
 
-        // Ghi nhật ký đăng nhập vào bảng nhat_ky_he_thong
         _context.NhatKyHeThongs.Add(new NhatKyHeThong
         {
             NguoiDungId = user.Id,
@@ -487,23 +499,22 @@ public class ShopController : Controller
 
         await _context.SaveChangesAsync();
 
-        // Ánh xạ ma_vai_tro từ bảng vai_tro trong SQL sang role ứng dụng
         var maVaiTro = user.VaiTros.FirstOrDefault()?.MaVaiTro ?? "KHACH_HANG";
-        var appRole = maVaiTro switch
+        var appRole = maVaiTro.ToUpperInvariant() switch
         {
-            "ADMIN" => "Admin",
-            "NHAN_VIEN" or "QL_KHO" or "QL_SAN_PHAM" => "Employee",
+            "ADMIN" or "QUAN_TRI" => "Admin",
+            "NHAN_VIEN" or "QL_KHO" or "QL_SAN_PHAM" or "EMPLOYEE" => "Employee",
             _ => "Customer"
         };
 
         var claims = new[]
         {
-        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-        new Claim(ClaimTypes.Name, user.HoTen),
-        new Claim(ClaimTypes.Email, user.Email),
-        new Claim("MaVaiTro", maVaiTro),
-        new Claim(ClaimTypes.Role, appRole)
-    };
+            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new Claim(ClaimTypes.Name, user.HoTen ?? user.Email ?? "Người dùng"),
+            new Claim(ClaimTypes.Email, user.Email ?? ""),
+            new Claim("MaVaiTro", maVaiTro),
+            new Claim(ClaimTypes.Role, appRole)
+        };
 
         var identity = new ClaimsIdentity(claims, "ShopCookie", ClaimTypes.Name, ClaimTypes.Role);
         await HttpContext.SignInAsync("ShopCookie", new ClaimsPrincipal(identity), new AuthenticationProperties
@@ -512,7 +523,6 @@ public class ShopController : Controller
             ExpiresUtc = model.RememberMe ? DateTimeOffset.UtcNow.AddDays(30) : DateTimeOffset.UtcNow.AddHours(8)
         });
 
-        // Kiểm tra và điều hướng theo vai trò
         if (!string.IsNullOrWhiteSpace(returnUrl) && Url.IsLocalUrl(returnUrl))
             return Redirect(returnUrl);
 
@@ -542,7 +552,6 @@ public class ShopController : Controller
 
         var normalizedEmail = model.Email.Trim().ToLower();
 
-        // Kiểm tra tên DbSet và tên cột Email / MatKhauHash / ThoiGianCapNhat cho khớp entity NguoiDung của bạn
         var user = await _context.NguoiDungs
             .FirstOrDefaultAsync(u => u.Email != null && u.Email.ToLower() == normalizedEmail);
 
@@ -955,9 +964,205 @@ public class ShopController : Controller
     [Authorize]
     public async Task<IActionResult> Invoice(string id)
     {
-        var orderCode = string.IsNullOrWhiteSpace(id) ? TempData["OrderCode"]?.ToString() : id;
-        ViewBag.OrderCode = string.IsNullOrWhiteSpace(orderCode) ? "DH-261119001" : orderCode;
-        return await LoadOrderItemsView(orderCode);
+        var query = _context.DonHangs
+            .Include(d => d.NguoiDung)
+            .Include(d => d.DonHangChiTiets)
+                .ThenInclude(ct => ct.BienThe)
+                    .ThenInclude(bt => bt.SanPham)
+                        .ThenInclude(sp => sp.SanPhamAnhs)
+            .AsQueryable();
+
+        var donHang = long.TryParse(id, out var orderId)
+            ? await query.FirstOrDefaultAsync(d => d.MaDonHang == id || d.Id == orderId)
+            : await query.FirstOrDefaultAsync(d => d.MaDonHang == id);
+
+        ViewBag.OrderCode = donHang?.MaDonHang ?? id;
+        ViewBag.Order = donHang;
+
+        var items = donHang?.DonHangChiTiets.Select(ct => new ProductViewModel
+        {
+            Id = ct.BienThe.SanPhamId,
+            Name = $"{ct.TenSanPham} ({ct.Size} - {ct.MauSac}) x{ct.SoLuong}",
+            Price = ct.ThanhTien ?? (ct.DonGia * ct.SoLuong),
+            Stock = ct.SoLuong,
+            Image = ResolveProductImage(
+                ct.BienThe.SanPham.SanPhamAnhs
+                    .OrderByDescending(a => a.LaAnhDaiDien)
+                    .Select(a => a.Url)
+                    .FirstOrDefault(),
+                null)
+        }).ToList() ?? new List<ProductViewModel>();
+
+        return View(items);
+    }
+
+    [HttpPost]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExportInvoicePdf(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return NotFound();
+
+        var order = await _context.DonHangs
+            .Include(d => d.DonHangChiTiets)
+                .ThenInclude(ct => ct.BienThe)
+                    .ThenInclude(bt => bt.KichThuoc)
+            .Include(d => d.DonHangChiTiets)
+                .ThenInclude(ct => ct.BienThe)
+                    .ThenInclude(bt => bt.MauSac)
+            .FirstOrDefaultAsync(d => d.MaDonHang == id);
+
+        if (order == null) return NotFound();
+
+        var paymentText = order.PhuongThucThanhToan switch
+        {
+            "COD" => "Thanh toán khi nhận hàng (COD)",
+            "BANK" or "Chuyen_khoan" => "Chuyển khoản ngân hàng",
+            _ => order.PhuongThucThanhToan ?? "Thanh toán khi nhận hàng (COD)"
+        };
+
+        var statusText = order.TrangThai switch
+        {
+            "Cho_xac_nhan" => "Chờ xác nhận",
+            "Da_xac_nhan" => "Đã xác nhận",
+            "Dang_giao" => "Đang giao hàng",
+            "Da_giao" => "Hoàn tất",
+            "Da_huy" => "Đã hủy",
+            _ => order.TrangThai
+        };
+
+        QuestPDF.Settings.License = LicenseType.Community;
+        QuestPDF.Settings.UseSystemFonts = true;
+        QuestPDF.Settings.ThrowOnMissingFontFamilies = false;
+
+        var pdfBytes = PdfDocument.Create(container =>
+        {
+            container.Page(page =>
+            {
+                page.Size(PageSizes.A4);
+                page.Margin(40);
+                page.PageColor(PdfColors.White);
+                page.DefaultTextStyle(x => x.FontFamily("Arial").FontSize(10.5f).FontColor("#1E293B"));
+
+                page.Header().Column(col =>
+                {
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Row(brand =>
+                        {
+                            brand.ConstantItem(28).Height(28).Background("#18181B").AlignCenter().AlignMiddle()
+                                .Text("F").FontColor(PdfColors.White).Bold().FontSize(13);
+                            brand.RelativeItem().PaddingLeft(10).AlignMiddle()
+                                .Text("FashionHub").FontSize(17).Bold().FontColor("#0F172A");
+                        });
+
+                        row.ConstantItem(230).AlignRight().Column(right =>
+                        {
+                            right.Item().Text("HÓA ĐƠN").FontSize(9).FontColor("#64748B").Bold();
+                            right.Item().Text(order.MaDonHang).FontSize(12.5f).Bold().FontColor("#0F172A");
+                        });
+                    });
+
+                    col.Item().PaddingTop(14).BorderBottom(1.5f).BorderColor("#18181B");
+                });
+
+                page.Content().PaddingVertical(18).Column(col =>
+                {
+                    col.Spacing(18);
+
+                    col.Item().Row(row =>
+                    {
+                        row.RelativeItem().Column(left =>
+                        {
+                            left.Item().Text("KHÁCH HÀNG").FontSize(8.5f).Bold().FontColor("#94A3B8");
+                            left.Item().PaddingTop(3).Text(order.TenNguoiNhan).FontSize(12).Bold().FontColor("#0F172A");
+                            left.Item().PaddingTop(4).Text(order.DienThoaiNhan).FontSize(10).FontColor("#475569");
+                            left.Item().PaddingTop(2).Text(order.DiaChiGiao).FontSize(10).FontColor("#475569");
+                        });
+
+                        row.RelativeItem().Column(right =>
+                        {
+                            right.Item().Text("THÔNG TIN ĐƠN").FontSize(8.5f).Bold().FontColor("#94A3B8");
+                            right.Item().PaddingTop(4).Text($"Ngày lập: {order.ThoiGianTao:dd/MM/yyyy HH:mm}").FontSize(10).FontColor("#475569");
+                            right.Item().PaddingTop(2).Text($"Phương thức: {paymentText}").FontSize(10).FontColor("#475569");
+                            right.Item().PaddingTop(2).Text($"Trạng thái: {statusText}").FontSize(10).FontColor("#475569");
+                        });
+                    });
+
+                    col.Item().PaddingTop(6).Table(table =>
+                    {
+                        table.ColumnsDefinition(columns =>
+                        {
+                            columns.RelativeColumn(3.5f);
+                            columns.ConstantColumn(50);
+                            columns.RelativeColumn(1.4f);
+                            columns.RelativeColumn(1.5f);
+                        });
+
+                        table.Header(header =>
+                        {
+                            header.Cell().BorderBottom(1).BorderColor("#E2E8F0").PaddingVertical(8).Text("Sản phẩm").Bold().FontSize(10);
+                            header.Cell().BorderBottom(1).BorderColor("#E2E8F0").PaddingVertical(8).AlignCenter().Text("SL").Bold().FontSize(10);
+                            header.Cell().BorderBottom(1).BorderColor("#E2E8F0").PaddingVertical(8).AlignRight().Text("Đơn giá").Bold().FontSize(10);
+                            header.Cell().BorderBottom(1).BorderColor("#E2E8F0").PaddingVertical(8).AlignRight().Text("Thành tiền").Bold().FontSize(10);
+                        });
+
+                        foreach (var ct in order.DonHangChiTiets)
+                        {
+                            var size = ct.BienThe?.KichThuoc?.MaSize;
+                            var color = ct.BienThe?.MauSac?.TenMau;
+                            var variantLabel = (!string.IsNullOrEmpty(size) || !string.IsNullOrEmpty(color))
+                                ? $"({size} - {color})"
+                                : "";
+
+                            table.Cell().BorderBottom(0.5f).BorderColor("#F1F5F9").PaddingVertical(9).Column(c =>
+                            {
+                                c.Item().Text(ct.TenSanPham).Bold().FontSize(10).FontColor("#0F172A");
+                                if (!string.IsNullOrEmpty(variantLabel))
+                                    c.Item().Text(variantLabel).FontSize(9).FontColor("#64748B");
+                            });
+
+                            table.Cell().BorderBottom(0.5f).BorderColor("#F1F5F9").PaddingVertical(9).AlignCenter().Text($"{ct.SoLuong}");
+                            table.Cell().BorderBottom(0.5f).BorderColor("#F1F5F9").PaddingVertical(9).AlignRight().Text($"{ct.DonGia:N0} đ");
+                            table.Cell().BorderBottom(0.5f).BorderColor("#F1F5F9").PaddingVertical(9).AlignRight().Text($"{(ct.DonGia * ct.SoLuong):N0} đ");
+                        }
+                    });
+
+                    col.Item().AlignRight().Width(240).Column(sumCol =>
+                    {
+                        sumCol.Spacing(6);
+
+                        void SumRow(string label, string val)
+                        {
+                            sumCol.Item().Row(r =>
+                            {
+                                r.RelativeItem().Text(label).FontSize(10).FontColor("#475569");
+                                r.RelativeItem().AlignRight().Text(val).FontSize(10).Bold().FontColor("#0F172A");
+                            });
+                        }
+
+                        SumRow("Tạm tính", $"{order.TienHang:N0} đ");
+                        SumRow("Phí vận chuyển", $"{order.PhiVanChuyen:N0} đ");
+                        SumRow("Giảm giá", order.TienGiam > 0 ? $"-{order.TienGiam:N0} đ" : "0 đ");
+
+                        sumCol.Item().PaddingTop(4).BorderTop(1.5f).BorderColor("#18181B").PaddingTop(6).Row(r =>
+                        {
+                            r.RelativeItem().Text("Tổng cộng").FontSize(12).Bold().FontColor("#0F172A");
+                            r.RelativeItem().AlignRight().Text($"{order.TongThanhToan:N0} đ").FontSize(13).Bold().FontColor("#0F172A");
+                        });
+                    });
+                });
+
+                page.Footer().AlignCenter().Text("Cảm ơn quý khách đã mua sắm tại FashionHub.")
+                    .FontSize(9.5f).FontColor("#64748B");
+            });
+        }).GeneratePdf();
+
+        var invoiceDir = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "invoices");
+        Directory.CreateDirectory(invoiceDir);
+        var fileName = $"HoaDon_{order.MaDonHang}.pdf";
+        await System.IO.File.WriteAllBytesAsync(Path.Combine(invoiceDir, fileName), pdfBytes);
+
+        return File(pdfBytes, "application/pdf", fileName);
     }
 
     private async Task<IActionResult> LoadOrderItemsView(string? orderCode)

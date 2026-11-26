@@ -345,9 +345,6 @@ public partial class ClothingShopContext : DbContext
             entity.Property(e => e.ThoiGianTao)
                 .HasDefaultValueSql("(sysdatetime())")
                 .HasColumnName("thoi_gian_tao");
-            entity.Property(e => e.TinhThanh)
-                .HasMaxLength(100)
-                .HasColumnName("tinh_thanh");
 
             entity.HasOne(d => d.NguoiDung).WithOne(p => p.DiaChi)
                 .HasForeignKey<DiaChi>(d => d.NguoiDungId)
