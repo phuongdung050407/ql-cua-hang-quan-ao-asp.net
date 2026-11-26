@@ -909,7 +909,7 @@ BEGIN
            )
     )
     BEGIN
-        THROW 50030,N'Chi duoc danh gia san pham da mua trong don hang da giao cua chinh ban.',1;
+        ;THROW 50030,N'Chi duoc danh gia san pham da mua trong don hang da giao cua chinh ban.',1;
     END
 END;
 GO
