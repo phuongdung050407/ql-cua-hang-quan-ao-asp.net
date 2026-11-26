@@ -1,0 +1,167 @@
+﻿@model ProductViewModel
+
+@{
+    ViewData["Title"] = "Chi tiết sản phẩm";
+
+    var variants = ViewBag.Variants;
+}
+
+<div class="page-heading">
+    <div>
+        <p class="eyebrow">QUẢN LÝ / SẢN PHẨM</p>
+        <h1>Chi tiết sản phẩm</h1>
+    </div>
+
+    <a asp-controller="Management"
+       asp-action="Products"
+       class="secondary-button">
+        ← Quay lại
+    </a>
+</div>
+
+<!-- THÔNG TIN SẢN PHẨM -->
+<section class="panel product-detail-panel">
+    <div class="product-detail-grid">
+
+        <div class="product-detail-image">
+            @if (!string.IsNullOrEmpty(Model.Image))
+            {
+                <img src="@Model.Image" alt="@Model.Name" />
+            }
+            else
+            {
+                <div class="no-image">Chưa có hình ảnh</div>
+            }
+        </div>
+
+        <div class="product-detail-info">
+            <div class="detail-header">
+                <div>
+                    <p class="eyebrow">THÔNG TIN SẢN PHẨM</p>
+                    <h2>@Model.Name</h2>
+                </div>
+
+                <span class="badge @(Model.Status == "Đang bán"
+                                          ? "badge-success"
+                                          : Model.Status == "Sắp hết"
+                                              ? "badge-warning"
+                                              : "badge-danger")">
+                    @Model.Status
+                </span>
+            </div>
+
+            <div class="detail-item">
+                <span>Mã sản phẩm</span>
+                <strong>@Model.Id</strong>
+            </div>
+
+            <div class="detail-item">
+                <span>Tên sản phẩm</span>
+                <strong>@Model.Name</strong>
+            </div>
+
+            <div class="detail-item">
+                <span>Danh mục</span>
+                <strong>@Model.Category</strong>
+            </div>
+
+            <div class="detail-item">
+                <span>Giá bán</span>
+                <strong class="product-price">
+                    @Model.Price.ToString("N0") đ
+                </strong>
+            </div>
+
+            <div class="detail-item">
+                <span>Tổng tồn kho</span>
+                <strong>@Model.Stock</strong>
+            </div>
+
+            <div class="detail-item">
+                <span>Trạng thái</span>
+                <strong>@Model.Status</strong>
+            </div>
+        </div>
+
+    </div>
+</section>
+
+<!-- DANH SÁCH BIẾN THỂ -->
+<section class="panel variant-panel">
+    <div class="variant-heading">
+        <div>
+            <p class="eyebrow">QUẢN LÝ KHO</p>
+            <h2>Biến thể sản phẩm</h2>
+        </div>
+
+        <span>@(variants?.Count ?? 0) biến thể</span>
+    </div>
+
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Mã SKU</th>
+                    <th>Kích thước</th>
+                    <th>Màu sắc</th>
+                    <th>Giá bán</th>
+                    <th>Tồn kho</th>
+                    <th>Trạng thái</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                @if (variants != null && variants.Count > 0)
+                {
+                    foreach (var bt in variants)
+                    {
+                        <tr>
+                            <td><strong>@bt.Sku</strong></td>
+
+                            <td>@bt.Size</td>
+
+                            <td>
+                                <div class="variant-color">
+                                    @if (!string.IsNullOrEmpty(bt.MaHex))
+                                    {
+                                        <span class="color-circle"
+                                              style="background-color:@bt.MaHex">
+                                        </span>
+                                    }
+                                    @bt.Color
+                                </div>
+                            </td>
+
+                            <td>@bt.GiaBan.ToString("N0") đ</td>
+
+                            <td>@bt.Stock</td>
+
+                            <td>
+                                @if (bt.TrangThai)
+                                {
+                                    <span class="badge badge-success">
+                                        Đang hoạt động
+                                    </span>
+                                }
+                                else
+                                {
+                                    <span class="badge badge-danger">
+                                        Ngừng hoạt động
+                                    </span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+                else
+                {
+                    <tr>
+                        <td colspan="6" class="empty-variant">
+                            Sản phẩm chưa có biến thể nào.
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</section>
